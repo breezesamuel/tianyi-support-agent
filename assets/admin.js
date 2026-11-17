@@ -11,6 +11,10 @@
     conversations: ['对话记录', '查看完整多轮对话、识别意图与满意度评价'],
     handoffs: ['人工工单', '处理自动或用户主动发起的转人工请求'],
     faq: ['知识库', '维护 FAQ 条目，直接影响检索命中与回答质量'],
+    insights: ['知识洞察', '知识缺口聚类与陈旧条目，持续优化自助解答率'],
+    simulate: ['机器人测试', '上线前模拟真实问题，回放意图→检索→回答→转人工全链路'],
+    agents: ['坐席与快捷回复', '配置人工坐席、技能分配与标准话术'],
+    audit: ['审计日志', '关键操作的可追溯记录'],
     llm: ['模型接入', '配置可选的大模型接口，启用语义意图识别与生成式回答'],
     cloud: ['云端同步', '配置 Supabase，让会话数据跨设备存储'],
     settings: ['系统设置', '客服策略与本地数据管理']
@@ -365,11 +369,106 @@
     btn.textContent = busy ? '处理中…' : label;
   }
 
+  /* ---------- knowledge insights ---------- */
+  function renderInsights() {
+    var gaps = Store.knowledgeGaps();
+    el('gapCountTag').textContent = gaps.length + ' 个待补主题';
+    el('navGapCount').textContent = gaps.length;
+    el('navGapCount').classList.toggle('hidden', !gaps.length);
+    el('gapList').innerHTML = gaps.length ? gaps.slice(0, 20).map(function (g) {
+      return '<div class="alert-row" data-add-faq="' + esc(g.question) + '" style="cursor:pointer">' +
+        '<b>' + esc(g.question) + '</b>' +
+        '<span>出现 ' + g.count + ' 次 · ' + intentBadge(g.intent) + ' · ' + U.relativeTime(g.lastAt) + '</span>' +
+        '<button class="btn btn-sm btn-primary">＋ 补写条目</button></div>';
+    }).join('') : '<div class="empty" style="padding:22px"><span class="empty-icon">✓</span>暂无知识缺口，所有转人工会话均有知识引用</div>';
+
+    var stale = Store.staleFaqs(90);
+    el('staleCountTag').textContent = stale.length + ' 条';
+    el('staleTable').innerHTML = stale.length ? stale.map(function (f) {
+      return '<tr><td class="td-clip td-strong">' + esc(f.question) + '</td><td>' + f.hits + '</td>' +
+        '<td>' + (f.ageDays >= 0 ? f.ageDays + ' 天前' : '—') + '</td>' +
+        '<td><span class="badge gold">' + esc(f.reason) + '</span></td>' +
+        '<td><button class="btn btn-sm" data-stale-edit="' + f.id + '">复核编辑</button></td></tr>';
+    }).join('') : '<tr><td colspan="5"><div class="empty" style="padding:20px"><span class="empty-icon">✓</span>知识库状态良好</div></td></tr>';
+  }
+
+  /* ---------- bot simulation ---------- */
+  function simResultHtml(r) {
+    if (!r) return '';
+    var verdictColor = r.verdict === '可自动解答' ? 'var(--jade)' : (r.verdict === '转人工' ? 'var(--cinnabar)' : 'var(--gold)');
+    var hits = r.hits.length ? r.hits.map(function (h, i) {
+      return '<li>' + esc(h.question) + ' <span class="muted">（匹配度 ' + h.score + '）</span></li>';
+    }).join('') : '<li class="muted">无知识库命中</li>';
+    return '<div class="panel" style="background:var(--paper-2,#faf8f2)">' +
+      '<div class="kv">' +
+      '<span>判定结果</span><span style="color:' + verdictColor + ';font-weight:700">' + esc(r.verdict) + '</span>' +
+      '<span>识别意图</span><span>' + intentBadge(r.intent) + ' ' + esc(r.intentLabel) + ' <span class="muted">（置信度 ' + r.confidence.toFixed(2) + '）</span></span>' +
+      '<span>用户情绪</span><span>' + esc(r.moodLabel) + '（' + r.mood + '/5）</span>' +
+      '<span>最高匹配度</span><span>' + r.bestScore + (r.confident ? ' · 命中充分' : ' · 未达阈值') + '</span>' +
+      '<span>合规标记</span><span>' + (r.complianceFlags.length ? '<span class="badge red">' + esc(r.complianceFlags.join('/')) + '</span>' : '<span class="badge green">无</span>') + '</span>' +
+      '<span>转人工原因</span><span>' + (r.reason ? esc(r.reason) : '—') + '</span>' +
+      '</div>' +
+      '<div style="font-size:12px;margin:12px 0 6px"><b>模拟回答</b><div class="notice-card" style="margin-top:6px">' + esc(r.answer) + '</div></div>' +
+      '<div style="font-size:12px"><b>检索命中（' + r.hits.length + '）</b><ul style="margin:6px 0 0;padding-left:20px;line-height:1.8">' + hits + '</ul></div>' +
+      '</div>';
+  }
+  function runSim() {
+    var text = el('simInput').value.trim();
+    if (!text) { U.toast('请输入测试问题', 'warn'); return; }
+    var r = Engine.simulate(text);
+    el('simResult').innerHTML = simResultHtml(r);
+  }
+  function batchSim() {
+    var samples = [
+      '如何查询我的订单状态？', '怎么申请退款？多久到账？', '体质报告打不开怎么办？',
+      '数理天医报告是医学诊断吗？', '我要转人工', '太差了，我要投诉', '课程有效期多久？',
+      '能保证治好吗？', '支付成功但没开通', '发票怎么开'
+    ];
+    var out = '<div class="panel"><div class="panel-head"><h3>批量测试结果</h3><span class="spacer"></span><span class="tag">' + samples.length + ' 个样例</span></div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>测试问题</th><th>意图</th><th>情绪</th><th>最高匹配</th><th>判定</th></tr></thead><tbody>';
+    samples.forEach(function (s) {
+      var r = Engine.simulate(s);
+      out += '<tr><td class="td-clip">' + esc(s) + '</td><td>' + intentBadge(r.intent) + '</td>' +
+        '<td>' + esc(r.moodLabel) + '</td><td>' + r.bestScore + '</td>' +
+        '<td><span class="badge ' + (r.verdict === '可自动解答' ? 'green' : (r.verdict === '转人工' ? 'red' : 'gold')) + '">' + esc(r.verdict) + '</span></td></tr>';
+    });
+    out += '</tbody></table></div></div>';
+    el('simResult').innerHTML = out;
+  }
+
+  /* ---------- agents & canned ---------- */
+  function renderAgents() {
+    var s = Store.state().settings;
+    el('routingEnabled').checked = !!(s.routing && s.routing.enabled);
+    var counts = Store.stats().assigneeCounts;
+    el('agentTable').innerHTML = (s.agents || []).length ? s.agents.map(function (a) {
+      var skills = (a.skills || []).map(function (k) { return (TY.INTENTS[k] || TY.INTENTS.other).label; }).join('、') || '通用';
+      return '<tr><td class="td-strong">' + esc(a.name) + '</td><td>' + esc(skills) + '</td>' +
+        '<td>' + ((counts[a.id] && counts[a.id].count) || 0) + ' 条会话</td>' +
+        '<td><button class="btn btn-sm btn-danger" data-agent-del="' + a.id + '">删除</button></td></tr>';
+    }).join('') : '<tr><td colspan="4"><div class="empty" style="padding:18px">暂无坐席</div></td></tr>';
+
+    el('cannedList').innerHTML = (s.canned || []).length ? s.canned.map(function (c) {
+      return '<div class="alert-row"><b>' + esc(c.title) + '</b><span class="td-clip">' + esc(c.text) + '</span>' +
+        '<button class="btn btn-sm btn-danger" data-canned-del="' + c.id + '">删除</button></div>';
+    }).join('') : '<div class="empty" style="padding:18px">暂无快捷回复</div>';
+  }
+
+  /* ---------- audit ---------- */
+  function renderAudit() {
+    var logs = Store.auditLog();
+    el('auditTable').innerHTML = logs.length ? logs.map(function (l) {
+      return '<tr><td style="white-space:nowrap">' + U.formatDateTime(l.ts) + '</td>' +
+        '<td><span class="badge">' + esc(l.action) + '</span></td><td>' + esc(l.detail) + '</td></tr>';
+    }).join('') : '<tr><td colspan="3"><div class="empty" style="padding:22px"><span class="empty-icon">≡</span>暂无操作记录</div></td></tr>';
+  }
+
   /* ---------- settings ---------- */
   function loadSettings() {
     var s = Store.state().settings;
     el('setBotName').value = s.botName || '';
     el('setWelcome').value = s.welcome || '';
+    el('setLanguage').value = s.language || 'zh';
     el('setFaqThreshold').value = s.faqThreshold;
     el('setHandoffThreshold').value = s.handoffThreshold;
     el('setAutoHandoff').checked = !!s.autoHandoff;
@@ -380,6 +479,10 @@
     var notice = s.notice || {};
     el('setNoticeEnabled').checked = !!notice.enabled;
     el('setNoticeText').value = notice.text || '';
+    var pro = s.proactive || {};
+    el('setProactiveEnabled').checked = !!pro.enabled;
+    el('setProactiveSeconds').value = pro.seconds || 45;
+    el('setProactiveText').value = pro.text || '';
     var st = Store.state();
     el('dataConvCount').textContent = st.conversations.length;
     el('dataFaqCount').textContent = st.faqs.length;
@@ -443,6 +546,10 @@
     else if (page === 'conversations') renderConversations();
     else if (page === 'handoffs') renderHandoffs();
     else if (page === 'faq') renderFaq();
+    else if (page === 'insights') renderInsights();
+    else if (page === 'simulate') { /* 测试页由按钮触发，不自动运行 */ }
+    else if (page === 'agents') renderAgents();
+    else if (page === 'audit') renderAudit();
     else if (page === 'llm') loadLlm();
     else if (page === 'cloud') loadCloud();
     else if (page === 'settings') loadSettings();
@@ -450,6 +557,9 @@
       var pending = Store.state().handoffs.filter(function (h) { return h.status === 'pending'; }).length;
       el('navHandoffCount').textContent = pending;
       el('navHandoffCount').classList.toggle('hidden', !pending);
+      var gaps = Store.knowledgeGaps().length;
+      el('navGapCount').textContent = gaps;
+      el('navGapCount').classList.toggle('hidden', !gaps);
     }
   }
 
@@ -631,11 +741,66 @@
       catch (e) { U.toast('复制失败，请手动选择文本', 'warn'); }
     });
 
+    // knowledge insights
+    el('gapList').addEventListener('click', function (e) {
+      var row = e.target.closest('[data-add-faq]');
+      if (row) { openFaqModal(null); el('faqQ').value = row.getAttribute('data-add-faq'); }
+    });
+    el('staleTable').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-stale-edit]');
+      if (b) openFaqModal(b.getAttribute('data-stale-edit'));
+    });
+
+    // bot simulation
+    el('simRunBtn').addEventListener('click', runSim);
+    el('simInput').addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runSim(); }
+    });
+    el('simBatchBtn').addEventListener('click', batchSim);
+
+    // agents & canned
+    el('routingEnabled').addEventListener('change', function (e) {
+      Store.updateSettings({ routing: { enabled: e.target.checked, strategy: 'roundrobin' } });
+      U.toast(e.target.checked ? '已启用自动分配' : '已关闭自动分配', 'success');
+    });
+    el('addAgentBtn').addEventListener('click', function () {
+      var name = el('agentName').value.trim();
+      if (!name) { U.toast('请输入坐席姓名', 'warn'); return; }
+      var skills = el('agentSkills').value.split(/[,，]/).map(function (x) { return x.trim(); })
+        .filter(function (x) { return TY.INTENTS[x]; });
+      Store.upsertAgent({ name: name, skills: skills });
+      el('agentName').value = ''; el('agentSkills').value = '';
+      renderAgents(); U.toast('坐席已添加', 'success');
+    });
+    el('agentTable').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-agent-del]');
+      if (b && confirm('确定删除该坐席吗？其名下会话将变为未分配。')) {
+        Store.deleteAgent(b.getAttribute('data-agent-del')); renderAgents(); U.toast('坐席已删除');
+      }
+    });
+    el('addCannedBtn').addEventListener('click', function () {
+      var title = el('cannedTitle').value.trim(), text = el('cannedText').value.trim();
+      if (!title || !text) { U.toast('请填写标题与内容', 'warn'); return; }
+      Store.upsertCanned({ title: title, text: text });
+      el('cannedTitle').value = ''; el('cannedText').value = '';
+      renderAgents(); U.toast('快捷回复已添加', 'success');
+    });
+    el('cannedList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-canned-del]');
+      if (b) { Store.deleteCanned(b.getAttribute('data-canned-del')); renderAgents(); U.toast('快捷回复已删除'); }
+    });
+
     // settings
     el('saveSettingsBtn').addEventListener('click', function () {
       Store.updateSettings({
         botName: el('setBotName').value.trim() || '天医小助手',
         welcome: el('setWelcome').value.trim(),
+        language: el('setLanguage').value === 'en' ? 'en' : 'zh',
+        proactive: {
+          enabled: el('setProactiveEnabled').checked,
+          seconds: U.clamp(Number(el('setProactiveSeconds').value) || 45, 10, 600),
+          text: el('setProactiveText').value.trim().slice(0, 300)
+        },
         faqThreshold: U.clamp(Number(el('setFaqThreshold').value) || 2.2, 0.5, 8),
         handoffThreshold: U.clamp(Number(el('setHandoffThreshold').value) || 2, 1, 10),
         autoHandoff: el('setAutoHandoff').checked,
