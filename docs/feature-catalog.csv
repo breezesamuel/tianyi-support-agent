@@ -667,7 +667,7 @@
 "F20-009","运营与治理","服务目录","缺失","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P2 规划","中","服务时间与值班可先做配置；计费/合同需业务系统"
 "F20-010","运营与治理","成本中心","缺失","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P2 规划","中","服务时间与值班可先做配置；计费/合同需业务系统"
 "F20-011","运营与治理","预算","缺失","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P2 规划","中","服务时间与值班可先做配置；计费/合同需业务系统"
-"F20-012","运营与治理","用量监控","部分","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P1 补齐","中","服务时间与值班可先做配置；计费/合同需业务系统；先补字段与交互，再接后端"
+"F20-012","运营与治理","用量监控","已有","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P0 保持","中","已具备基础能力：补自动化测试、边界场景与使用文档"
 "F20-013","运营与治理","配额","缺失","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P2 规划","中","服务时间与值班可先做配置；计费/合同需业务系统"
 "F20-014","运营与治理","计费","缺失","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P2 规划","中","服务时间与值班可先做配置；计费/合同需业务系统"
 "F20-015","运营与治理","账单","缺失","Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio","P2 规划","中","服务时间与值班可先做配置；计费/合同需业务系统"
