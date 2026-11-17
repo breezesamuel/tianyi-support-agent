@@ -302,14 +302,25 @@
   }
 
   function doHandoff(conv, reason, intentKey) {
-    Store.addHandoff(conv.id, reason, intentKey);
+    Store.addHandoff(conv.id, reason, intentKey); // 内部会置 status=waiting_human 并记录 queuedAt
     Store.updateConversation(conv.id, { status: 'waiting_human' });
+    var queue = Store.queueInfo(conv.id);
+    var queueText = queue.enabled && queue.position
+      ? '您当前排在部门队首第 ' + queue.position + ' 位（共 ' + queue.total + ' 人）。'
+      : '';
+    var offlineText = '';
+    var ar = Store.state().settings.autoReply || {};
+    if (ar.offlineEnabled !== false && !Engine.inServiceHours()) offlineText = Engine.offlineReplyText();
     Store.addMessage(conv.id, {
       role: 'assistant',
-      content: '已为您转接人工客服，工单已生成。',
+      content: '已为您转接人工客服，工单已生成。' + (queueText ? '\n' + queueText : ''),
       handoff: reason,
-      engine: '自动转人工'
+      engine: '自动转人工',
+      queueInfo: queue
     });
+    if (offlineText) {
+      Store.addMessage(conv.id, { role: 'assistant', content: offlineText, engine: '离线自动回复' });
+    }
     U.toast('已生成人工工单，客服将在服务时间内跟进', 'warn');
   }
 
@@ -365,6 +376,23 @@
     }
     Store.updateConversation(conv.id, moodPatch);
     renderMessages();
+
+    /* 关键词自动回复：命中时优先于知识库/大模型，最快返回预设答案 */
+    var autoReply = Engine.matchAutoReply(text);
+    if (autoReply && !/转人工|人工客服|投诉/.test(text)) {
+      var arMsg = Store.addMessage(conv.id, {
+        role: 'assistant', content: autoReply.answer, intent: ruleIntent.key,
+        engine: '关键词自动回复', autoReplyId: autoReply.id
+      });
+      Store.updateConversation(conv.id, {
+        firstResponseAt: conv.firstResponseAt || (arMsg && arMsg.ts) || Date.now(),
+        summary: buildSummaryText(conv, ruleIntent.key, autoReply.answer)
+      });
+      busy = false; setBusy(false); controller = null;
+      proactiveShown = false; resetIdleTimer(); renderAll();
+      announce('已给出回答');
+      return;
+    }
 
     var retrieval = Engine.retrieveFaq(text, ruleIntent.key, 3);
     var llmIntent = await Engine.classifyWithLlm(text);
