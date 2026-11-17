@@ -226,8 +226,61 @@
     voice: {
       enabled: true,
       lang: 'zh-CN'
-    }
+    },
+    /* 第四轮：统一收件箱 —— VIP 优先 / 排队 / 服务时间 */
+    inbox: {
+      queueEnabled: true,
+      serviceHours: '09:00-21:00',
+      vipPriority: 100,
+      collisionWindowSec: 60
+    },
+    /* 第四轮：关键词自动回复 + 离线自动回复 */
+    autoReply: {
+      enabled: false,
+      offlineEnabled: true,
+      offlineText: '您好，人工客服当前不在线（服务时间 09:00-21:00）。已为您记录，我们将在服务时间优先回复；紧急问题可留言订单号。',
+      keywords: [
+        { id: 'ar1', keys: ['发票', '开票', '税号'], answer: '支持电子普通发票，请在「我的 → 发票管理」提交抬头与税号，约 3 个工作日发送至预留邮箱。', enabled: true },
+        { id: 'ar2', keys: ['服务时间', '几点上班', '人工时间'], answer: '人工客服服务时间为每日 09:00 - 21:00，非服务时间提交的请求会在次日优先处理。', enabled: true }
+      ]
+    },
+    /* 第四轮：回复宏（一次触发多步坐席动作） */
+    macros: [
+      { id: 'm1', title: '退款标准处理', steps: [
+        { type: 'tag', value: '退款' },
+        { type: 'canned', value: 'c1' },
+        { type: 'note', value: '按退款标准流程处理，已发送进度话术。' }
+      ] },
+      { id: 'm2', title: '技术工单升级', steps: [
+        { type: 'tag', value: '技术' },
+        { type: 'assign', value: 'a2' },
+        { type: 'note', value: '已升级技术坐席跟进。' }
+      ] }
+    ],
+    /* 第四轮：回复模板（支持 {{visitor}} {{intent}} {{agent}} {{date}} {{order}} 变量） */
+    templates: [
+      { id: 'tp1', title: '人工接入欢迎', text: '您好 {{visitor}}，我是 {{agent}}。已了解您咨询的是「{{intent}}」相关问题，请问具体订单号是多少？' },
+      { id: 'tp2', title: '结束语', text: '感谢您的咨询（{{date}}）。如还有疑问可随时回复，祝您生活愉快。' }
+    ]
   };
+
+  /* 统一补齐 settings 中的可选分组（load/import/applyRemote 共用，避免新增字段遗漏） */
+  function mergeSettings(base, saved) {
+    var s = Object.assign({}, JSON.parse(JSON.stringify(base)), saved || {});
+    ['llm', 'cloud', 'sla', 'compliance', 'notice', 'routing', 'proactive',
+      'disclosure', 'privacy', 'qa', 'a11y', 'voice', 'inbox', 'autoReply'].forEach(function (k) {
+      s[k] = Object.assign({}, JSON.parse(JSON.stringify(base[k] || {})), (saved && saved[k]) || {});
+    });
+    ['canned', 'agents', 'macros', 'templates'].forEach(function (k) {
+      s[k] = Array.isArray(saved && saved[k]) ? saved[k] : JSON.parse(JSON.stringify(base[k] || []));
+    });
+    if (Array.isArray(s.autoReply.keywords)) {
+      s.autoReply.keywords = s.autoReply.keywords.slice();
+    } else {
+      s.autoReply.keywords = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.autoReply.keywords));
+    }
+    return s;
+  }
 
   var LLM_PRESETS = [
     { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
@@ -477,8 +530,19 @@
         };
       }),
       handoffs: [],
+      drafts: {},      // 草稿同步：convId -> { text, ts }
+      mentions: [],    // @同事提醒：{ id, convId, to, text, ts, read }
+      viewLocks: {},   // 碰撞检测：convId -> { agent, ts }
       settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
     };
+  }
+
+  /* 补齐第四轮新增的数据集合（兼容旧版本 state） */
+  function ensureCollections(s) {
+    if (!s.drafts || typeof s.drafts !== 'object' || Array.isArray(s.drafts)) s.drafts = {};
+    if (!Array.isArray(s.mentions)) s.mentions = [];
+    if (!s.viewLocks || typeof s.viewLocks !== 'object' || Array.isArray(s.viewLocks)) s.viewLocks = {};
+    return s;
   }
 
   var S = null;
@@ -491,24 +555,11 @@
         var parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.conversations) && Array.isArray(parsed.faqs)) {
           S = parsed;
-          S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
-          S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (parsed.settings && parsed.settings.llm) || {});
-          S.settings.cloud = Object.assign({}, DEFAULT_SETTINGS.cloud, (parsed.settings && parsed.settings.cloud) || {});
-          S.settings.sla = Object.assign({}, DEFAULT_SETTINGS.sla, (parsed.settings && parsed.settings.sla) || {});
-          S.settings.compliance = Object.assign({}, DEFAULT_SETTINGS.compliance, (parsed.settings && parsed.settings.compliance) || {});
-          S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (parsed.settings && parsed.settings.notice) || {});
-          S.settings.routing = Object.assign({}, DEFAULT_SETTINGS.routing, (parsed.settings && parsed.settings.routing) || {});
-          S.settings.proactive = Object.assign({}, DEFAULT_SETTINGS.proactive, (parsed.settings && parsed.settings.proactive) || {});
-          S.settings.disclosure = Object.assign({}, DEFAULT_SETTINGS.disclosure, (parsed.settings && parsed.settings.disclosure) || {});
-          S.settings.privacy = Object.assign({}, DEFAULT_SETTINGS.privacy, (parsed.settings && parsed.settings.privacy) || {});
-          S.settings.qa = Object.assign({}, DEFAULT_SETTINGS.qa, (parsed.settings && parsed.settings.qa) || {});
-          S.settings.a11y = Object.assign({}, DEFAULT_SETTINGS.a11y, (parsed.settings && parsed.settings.a11y) || {});
-          S.settings.voice = Object.assign({}, DEFAULT_SETTINGS.voice, (parsed.settings && parsed.settings.voice) || {});
+          S.settings = mergeSettings(DEFAULT_SETTINGS, parsed.settings);
           if (!S.settings.language) S.settings.language = 'zh';
-          S.settings.canned = Array.isArray(S.settings.canned) ? S.settings.canned : DEFAULT_SETTINGS.canned;
-          S.settings.agents = Array.isArray(S.settings.agents) ? S.settings.agents : DEFAULT_SETTINGS.agents;
           S.handoffs = parsed.handoffs || [];
           S.auditLog = Array.isArray(parsed.auditLog) ? parsed.auditLog : [];
+          ensureCollections(S);
           return S;
         }
       }
@@ -541,26 +592,13 @@
       var prevLlmKey = (prev.settings.llm && prev.settings.llm.apiKey) || '';
       var prevCloudKey = (prev.settings.cloud && prev.settings.cloud.key) || '';
       S = obj;
-      S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), obj.settings || {});
-      S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (obj.settings && obj.settings.llm) || {});
-      S.settings.cloud = Object.assign({}, DEFAULT_SETTINGS.cloud, (obj.settings && obj.settings.cloud) || {});
-      S.settings.sla = Object.assign({}, DEFAULT_SETTINGS.sla, (obj.settings && obj.settings.sla) || {});
-      S.settings.compliance = Object.assign({}, DEFAULT_SETTINGS.compliance, (obj.settings && obj.settings.compliance) || {});
-      S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (obj.settings && obj.settings.notice) || {});
-      S.settings.routing = Object.assign({}, DEFAULT_SETTINGS.routing, (obj.settings && obj.settings.routing) || {});
-      S.settings.proactive = Object.assign({}, DEFAULT_SETTINGS.proactive, (obj.settings && obj.settings.proactive) || {});
-      S.settings.disclosure = Object.assign({}, DEFAULT_SETTINGS.disclosure, (obj.settings && obj.settings.disclosure) || {});
-      S.settings.privacy = Object.assign({}, DEFAULT_SETTINGS.privacy, (obj.settings && obj.settings.privacy) || {});
-      S.settings.qa = Object.assign({}, DEFAULT_SETTINGS.qa, (obj.settings && obj.settings.qa) || {});
-      S.settings.a11y = Object.assign({}, DEFAULT_SETTINGS.a11y, (obj.settings && obj.settings.a11y) || {});
-      S.settings.voice = Object.assign({}, DEFAULT_SETTINGS.voice, (obj.settings && obj.settings.voice) || {});
+      S.settings = mergeSettings(DEFAULT_SETTINGS, obj.settings);
       if (!S.settings.language) S.settings.language = 'zh';
-      S.settings.canned = Array.isArray(S.settings.canned) ? S.settings.canned : DEFAULT_SETTINGS.canned;
-      S.settings.agents = Array.isArray(S.settings.agents) ? S.settings.agents : DEFAULT_SETTINGS.agents;
       if (!S.settings.llm.apiKey) S.settings.llm.apiKey = prevLlmKey;
       if (!S.settings.cloud.key) S.settings.cloud.key = prevCloudKey;
       S.handoffs = obj.handoffs || [];
       S.auditLog = Array.isArray(obj.auditLog) ? obj.auditLog : [];
+      ensureCollections(S);
       save(); return S;
     },
     exportData: function () {
@@ -609,6 +647,222 @@
         var a = s.settings.agents.filter(function (x) { return x.id === agentId; })[0];
         audit('conversation.assign', (c.title || '') + ' → ' + (a ? a.name : '未分配'));
         return c;
+      });
+    },
+
+    /* ---------- 第四轮：统一收件箱 / VIP / 排队 / 协作 ---------- */
+    setVip: function (convId, vip) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        c.vip = !!vip;
+        audit('conversation.vip', (c.title || '') + (c.vip ? ' → VIP' : ' → 普通'));
+        return c;
+      });
+    },
+    /* 会话转接：记录 from→to 历史、写内部备注并审计 */
+    transferConversation: function (convId, toAgentId, note) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        var from = s.settings.agents.filter(function (x) { return x.id === c.assignee; })[0];
+        var to = s.settings.agents.filter(function (x) { return x.id === toAgentId; })[0];
+        if (!to) return c;
+        if (!c.transfers) c.transfers = [];
+        c.transfers.unshift({ from: c.assignee || '', to: toAgentId, note: note || '', ts: Date.now() });
+        c.assignee = toAgentId;
+        if (note && String(note).trim()) {
+          if (!c.internalNotes) c.internalNotes = [];
+          c.internalNotes.unshift({ id: uid('note'), text: '【转接】' + String(note).trim(), ts: Date.now() });
+        }
+        c.queuedAt = null;
+        audit('conversation.transfer', (c.title || '') + ' → ' + to.name);
+        return c;
+      });
+    },
+    /* 会话合并：把 sourceIds 的消息/标签/备注并入 targetId，并软删除来源会话 */
+    mergeConversations: function (targetId, sourceIds) {
+      return Store.mutate(function (s) {
+        var target = s.conversations.filter(function (x) { return x.id === targetId; })[0];
+        if (!target || !sourceIds || !sourceIds.length) return null;
+        var merged = { messages: 0, tags: 0, notes: 0 };
+        sourceIds.forEach(function (sid) {
+          if (sid === targetId) return;
+          var src = s.conversations.filter(function (x) { return x.id === sid; })[0];
+          if (!src) return;
+          (src.messages || []).forEach(function (m) { m.mergedFrom = sid; target.messages.push(m); merged.messages++; });
+          (src.tags || []).forEach(function (tag) { Store._addTagRaw(target, tag) && merged.tags++; });
+          (src.internalNotes || []).forEach(function (n) { target.internalNotes.push(n); merged.notes++; });
+          if (src.vip) target.vip = true;
+          s.conversations = s.conversations.filter(function (x) { return x.id !== sid; });
+          s.handoffs = s.handoffs.filter(function (h) { return h.conversationId !== sid; });
+        });
+        target.messages.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+        target.updatedAt = Date.now();
+        if (!target.mergedIds) target.mergedIds = [];
+        target.mergedIds = target.mergedIds.concat(sourceIds);
+        audit('conversation.merge', '合并 ' + sourceIds.length + ' 个会话 → ' + (target.title || ''));
+        return { conversation: target, merged: merged };
+      });
+    },
+    /* 会话拆分：按消息 id 拆分出一条新会话，原会话保留其余消息 */
+    splitConversation: function (convId, messageIds) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c || !messageIds || !messageIds.length) return null;
+        var picked = (c.messages || []).filter(function (m) { return messageIds.indexOf(m.id) >= 0; });
+        if (!picked.length) return null;
+        var firstUser = picked.filter(function (m) { return m.role === 'user'; })[0] || picked[0];
+        var n = {
+          id: uid('conv'), title: ('拆分 · ' + String(firstUser.content || '').slice(0, 14)),
+          createdAt: Date.now(), updatedAt: Date.now(), status: 'active',
+          intent: c.intent || 'other', messages: picked, rating: null, unresolvedTurns: 0,
+          channel: c.channel || 'web', tags: (c.tags || []).slice(), internalNotes: [],
+          summary: '', nps: null, firstResponseAt: null, resolvedAt: null, mood: c.mood || 3,
+          assignee: c.assignee || '', vip: !!c.vip, queuedAt: null, transfers: [],
+          splitFrom: convId, visitor: JSON.parse(JSON.stringify(c.visitor || {}))
+        };
+        c.messages = (c.messages || []).filter(function (m) { return messageIds.indexOf(m.id) < 0; });
+        c.updatedAt = Date.now();
+        s.conversations.unshift(n);
+        audit('conversation.split', (c.title || '') + ' → 拆分出 ' + picked.length + ' 条消息');
+        return n;
+      });
+    },
+    _addTagRaw: function (c, tag) {
+      var t = String(tag || '').trim().slice(0, 12);
+      if (t && !c.tags) c.tags = [];
+      if (t && c.tags.indexOf(t) < 0) { c.tags.push(t); return true; }
+      return false;
+    },
+    /* @同事：写入提及提醒（支持 @姓名 或 @坐席ID） */
+    mentionAgent: function (convId, text) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return [];
+        var raw = String(text || '');
+        var created = [];
+        s.settings.agents.forEach(function (a) {
+          if (raw.indexOf('@' + a.name) >= 0 || raw.indexOf('@' + a.id) >= 0) {
+            var m = { id: uid('mention'), convId: convId, to: a.id, toName: a.name, text: raw, ts: Date.now(), read: false };
+            s.mentions.push(m);
+            created.push(m);
+          }
+        });
+        if (created.length) audit('conversation.mention', (c.title || '') + ' @ ' + created.map(function (m) { return m.toName; }).join('/'));
+        return created;
+      });
+    },
+    unreadMentions: function (agentId) {
+      var s = load();
+      return (s.mentions || []).filter(function (m) { return !m.read && (!agentId || m.to === agentId); });
+    },
+    /* 排队位置：等待人工且未分配的会话，按 VIP 优先 + 入队时间排序，返回 1-based 位次 */
+    queueInfo: function (convId) {
+      var s = load();
+      var cfg = s.settings.inbox || DEFAULT_SETTINGS.inbox;
+      if (!cfg.queueEnabled) return { enabled: false, position: 0, total: 0 };
+      var queue = s.conversations.filter(function (c) {
+        return c.status === 'waiting_human' && !c.assignee;
+      }).sort(function (a, b) {
+        if (!!a.vip !== !!b.vip) return a.vip ? -1 : 1;
+        return (a.queuedAt || a.updatedAt || a.createdAt) - (b.queuedAt || b.updatedAt || b.createdAt);
+      });
+      var idx = queue.map(function (c) { return c.id; }).indexOf(convId);
+      return { enabled: true, position: idx >= 0 ? idx + 1 : 0, total: queue.length };
+    },
+    readMentions: function (agentId) {
+      return Store.mutate(function (s) {
+        (s.mentions || []).forEach(function (m) { if (!agentId || m.to === agentId) m.read = true; });
+        return true;
+      });
+    },
+    /* 碰撞检测：登记正在查看的坐席；若窗口内有其他坐席查看则返回冲突对象 */
+    beginView: function (convId, agent) {
+      return Store.mutate(function (s) {
+        ensureCollections(s);
+        var now = Date.now();
+        var win = (s.settings.inbox.collisionWindowSec || 60) * 1000;
+        var lock = s.viewLocks[convId];
+        var collision = null;
+        if (lock && lock.agent !== agent && (now - lock.ts) < win) collision = { agent: lock.agent, ago: now - lock.ts };
+        s.viewLocks[convId] = { agent: agent, ts: now };
+        return collision;
+      });
+    },
+    /* 草稿同步：按 convId 暂存坐席草稿，切换会话不丢失 */
+    saveDraft: function (convId, text) {
+      return Store.mutate(function (s) {
+        ensureCollections(s);
+        s.drafts[convId] = { text: String(text || ''), ts: Date.now() };
+        return s.drafts[convId];
+      });
+    },
+    getDraft: function (convId) {
+      var d = load().drafts || {};
+      return d[convId] || null;
+    },
+    clearDraft: function (convId) {
+      return Store.mutate(function (s) {
+        ensureCollections(s);
+        delete s.drafts[convId];
+        return true;
+      });
+    },
+    /* 回复宏：按 steps 顺序执行 tag/canned/note/assign/status 动作 */
+    runMacro: function (convId, macroId) {
+      var s = load();
+      var macro = (s.settings.macros || []).filter(function (m) { return m.id === macroId; })[0];
+      if (!macro) return null;
+      var applied = [];
+      (macro.steps || []).forEach(function (step) {
+        if (step.type === 'tag') { Store.addTag(convId, step.value); applied.push('标签: ' + step.value); }
+        else if (step.type === 'note') { Store.addInternalNote(convId, step.value); applied.push('内部备注'); }
+        else if (step.type === 'assign') { Store.setAssignee(convId, step.value); applied.push('分配坐席'); }
+        else if (step.type === 'canned') {
+          var cc = (load().settings.canned || []).filter(function (x) { return x.id === step.value; })[0];
+          if (cc) { Store.saveDraft(convId, cc.text); applied.push('草稿: ' + cc.title); }
+        } else if (step.type === 'status') {
+          Store.updateConversation(convId, step.value === 'resolved' ? { status: 'resolved', resolvedAt: Date.now() } : { status: step.value });
+          applied.push('状态: ' + step.value);
+        }
+      });
+      audit('macro.run', (macro.title || macroId) + ' @ ' + convId);
+      return { title: macro.title, applied: applied };
+    },
+    /* 回复模板：替换 {{visitor}} {{intent}} {{agent}} {{date}} {{order}} 变量 */
+    renderTemplate: function (templateId, convId) {
+      var s = load();
+      var tp = (s.settings.templates || []).filter(function (x) { return x.id === templateId; })[0];
+      if (!tp) return '';
+      var c = s.conversations.filter(function (x) { return x.id === convId; })[0] || {};
+      var agent = (s.settings.agents || []).filter(function (x) { return x.id === c.assignee; })[0];
+      var firstUser = (c.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+      var order = (String((firstUser || {}).content || '').match(/\d{10,16}/) || [])[0] || '';
+      return String(tp.text)
+        .replace(/\{\{visitor\}\}/g, (c.visitor && c.visitor.id) || '用户')
+        .replace(/\{\{intent\}\}/g, intentLabel(c.intent || 'other'))
+        .replace(/\{\{agent\}\}/g, agent ? agent.name : '人工客服')
+        .replace(/\{\{date\}\}/g, formatDate(Date.now()))
+        .replace(/\{\{order\}\}/g, order || '（订单号待补充）');
+    },
+    /* 批量会话操作：assign / tag / resolve / vip / delete */
+    batchOperation: function (ids, action, value) {
+      return Store.mutate(function (s) {
+        if (!Array.isArray(ids) || !ids.length) return { count: 0 };
+        var count = 0;
+        ids.forEach(function (id) {
+          var c = s.conversations.filter(function (x) { return x.id === id; })[0];
+          if (!c) return;
+          if (action === 'assign') c.assignee = value || '';
+          else if (action === 'tag') Store._addTagRaw(c, value);
+          else if (action === 'resolve') { c.status = 'resolved'; c.resolvedAt = Date.now(); }
+          else if (action === 'vip') c.vip = !!value;
+          else if (action === 'delete') { s.conversations = s.conversations.filter(function (x) { return x.id !== id; }); s.handoffs = s.handoffs.filter(function (h) { return h.conversationId !== id; }); }
+          count++;
+        });
+        audit('conversation.batch', action + ' × ' + count);
+        return { count: count };
       });
     },
     autoAssign: function (intentKey) {
@@ -706,6 +960,7 @@
           rating: null, unresolvedTurns: 0, channel: 'web',
           tags: [], internalNotes: [], summary: '', nps: null,
           firstResponseAt: null, resolvedAt: null, mood: 3, assignee: '',
+          vip: false, queuedAt: null, transfers: [], closedSummary: '',
           visitor: Object.assign({ id: 'anon', ua: '', lang: '', ref: '', firstSeen: Date.now() }, meta || {})
         };
         s.conversations.unshift(c);
@@ -832,6 +1087,8 @@
           status: 'pending', createdAt: Date.now(), resolvedAt: null, note: ''
         };
         s.handoffs.unshift(h);
+        var conv = s.conversations.filter(function (c) { return c.id === convId; })[0];
+        if (conv) { conv.status = 'waiting_human'; conv.queuedAt = Date.now(); }
         return h;
       });
     },
@@ -948,7 +1205,13 @@
         })(),
         gaps: Store.knowledgeGaps().length,
         trueMetrics: trueMetrics(),
-        qa: qaStats()
+        qa: qaStats(),
+        inbox: {
+          vipCount: convs.filter(function (c) { return c.vip; }).length,
+          queuedCount: convs.filter(function (c) { return c.status === 'waiting_human' && !c.assignee; }).length,
+          unreadMentions: Store.unreadMentions().length,
+          drafts: Object.keys(s.drafts || {}).length
+        }
       };
     }
   };
@@ -1057,6 +1320,35 @@
       handoff: handoff, reason: reason,
       verdict: handoff ? '转人工' : (retrieval.confident ? '可自动解答' : '需复核')
     };
+  }
+
+  /* 第四轮：关键词自动回复 —— 命中配置关键词时直接返回预设答案（优先级高于 FAQ/LLM） */
+  function matchAutoReply(text) {
+    var cfg = load().settings.autoReply || DEFAULT_SETTINGS.autoReply;
+    if (!cfg.enabled) return null;
+    var raw = normalize(text);
+    var hit = null;
+    (cfg.keywords || []).forEach(function (rule) {
+      if (hit || rule.enabled === false) return;
+      (rule.keys || []).forEach(function (k) {
+        if (!hit && raw.indexOf(normalize(k)) >= 0) hit = rule;
+      });
+    });
+    return hit ? { answer: hit.answer, id: hit.id } : null;
+  }
+  /* 第四轮：服务时间判断 + 离线自动回复（非服务时间且转人工时提示） */
+  function inServiceHours(now) {
+    var cfg = load().settings.inbox || DEFAULT_SETTINGS.inbox;
+    var range = String(cfg.serviceHours || '09:00-21:00').split('-');
+    var d = now ? new Date(now) : new Date();
+    var mins = d.getHours() * 60 + d.getMinutes();
+    function toMin(s) { var p = String(s).trim().split(':'); return (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0); }
+    var start = toMin(range[0]), end = toMin(range[1]);
+    return start <= end ? (mins >= start && mins < end) : (mins >= start || mins < end);
+  }
+  function offlineReplyText() {
+    var cfg = load().settings.autoReply || DEFAULT_SETTINGS.autoReply;
+    return cfg.offlineText || DEFAULT_SETTINGS.autoReply.offlineText;
   }
 
   /* ---------------- LLM (optional, OpenAI-compatible) ---------------- */
@@ -1222,22 +1514,17 @@
     var llmKey = (local.settings.llm && local.settings.llm.apiKey) || '';
     var cloudKey = (local.settings.cloud && local.settings.cloud.key) || '';
     S = Object.assign({}, local, remote);
-    S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), remote.settings || {});
-    S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (remote.settings && remote.settings.llm) || {});
+    /* 以本地设置为基准叠加远端，远端缺失的新字段由 mergeSettings 用默认值补齐 */
+    S.settings = mergeSettings(local.settings, remote.settings);
+    /* 云同步时敏感配置以本地为准，避免覆盖本机密钥与网关地址 */
     S.settings.cloud = Object.assign({}, local.settings.cloud, (remote.settings && remote.settings.cloud) || {});
-    S.settings.sla = Object.assign({}, local.settings.sla || DEFAULT_SETTINGS.sla, (remote.settings && remote.settings.sla) || {});
-    S.settings.compliance = Object.assign({}, local.settings.compliance || DEFAULT_SETTINGS.compliance, (remote.settings && remote.settings.compliance) || {});
-    S.settings.notice = Object.assign({}, local.settings.notice || DEFAULT_SETTINGS.notice, (remote.settings && remote.settings.notice) || {});
-    S.settings.routing = Object.assign({}, local.settings.routing || DEFAULT_SETTINGS.routing, (remote.settings && remote.settings.routing) || {});
-    S.settings.proactive = Object.assign({}, local.settings.proactive || DEFAULT_SETTINGS.proactive, (remote.settings && remote.settings.proactive) || {});
-    S.settings.disclosure = Object.assign({}, local.settings.disclosure || DEFAULT_SETTINGS.disclosure, (remote.settings && remote.settings.disclosure) || {});
-    S.settings.privacy = Object.assign({}, local.settings.privacy || DEFAULT_SETTINGS.privacy, (remote.settings && remote.settings.privacy) || {});
-    S.settings.qa = Object.assign({}, local.settings.qa || DEFAULT_SETTINGS.qa, (remote.settings && remote.settings.qa) || {});
-    S.settings.a11y = Object.assign({}, local.settings.a11y || DEFAULT_SETTINGS.a11y, (remote.settings && remote.settings.a11y) || {});
-    S.settings.voice = Object.assign({}, local.settings.voice || DEFAULT_SETTINGS.voice, (remote.settings && remote.settings.voice) || {});
     S.settings.llm.apiKey = llmKey;
     S.settings.cloud.key = cloudKey;
     S.handoffs = Array.isArray(remote.handoffs) ? remote.handoffs : (local.handoffs || []);
+    S.drafts = (remote.drafts && typeof remote.drafts === 'object') ? remote.drafts : (local.drafts || {});
+    S.mentions = Array.isArray(remote.mentions) ? remote.mentions : (local.mentions || []);
+    S.viewLocks = (remote.viewLocks && typeof remote.viewLocks === 'object') ? remote.viewLocks : (local.viewLocks || {});
+    ensureCollections(S);
     suppressCloudPush = true; save(); suppressCloudPush = false;
     emit('tianyi:cloud-sync', { source: 'pull', at: Date.now() });
   }
@@ -1348,7 +1635,10 @@
       redactPii: redactPii,
       scoreConversation: scoreConversation,
       qaStats: qaStats,
-      trueMetrics: trueMetrics
+      trueMetrics: trueMetrics,
+      matchAutoReply: matchAutoReply,
+      inServiceHours: inServiceHours,
+      offlineReplyText: offlineReplyText
     },
     I18N: I18N,
     SENTIMENTS: SENTIMENTS,
