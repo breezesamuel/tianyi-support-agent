@@ -107,7 +107,9 @@ const EXISTS = new Set([
   'PII 识别','全量质检','质检得分','合规评分','质检规则','质检模板','违规告警','语音转文字','快捷键','无障碍访问',
   /* 第四批已落地（统一收件箱 / 排队 / 协作） */
   '统一收件箱','VIP 优先','排队位置提示','会话转接','会话合并','会话拆分','@同事','碰撞检测','草稿同步',
-  '回复宏','回复模板','离线自动回复','关键词自动回复','批量会话操作','会话结束总结'
+  '回复宏','回复模板','离线自动回复','关键词自动回复','批量会话操作','会话结束总结',
+  /* 第五批已落地（GitHub Skill 方法论） */
+  '混合检索','检索可解释性','回归评测','评测置信区间','LLM 评测','偏见缓解','访客长期记忆','多语言覆盖检测','无障碍自查'
 ]);
 
 const PARTIAL = new Set([
@@ -367,6 +369,39 @@ gapMd.push('- 四个 JS 文件 `node --check` 通过，无硬编码密钥。');
 gapMd.push('- Node 桩测试 21 项数据层能力全部通过（VIP / 排队 / 转接 / 合并 / 拆分 / @提及 / 草稿 / 宏 / 模板 / 批量 / 关键词等）。');
 gapMd.push('- 访客流程桩测试 9 项通过（关键词命中与开关、VIP 插队、服务时间与离线文案）。');
 gapMd.push('- DOM id 桩验证：admin.html / index.html 所有 `el()` 引用命中（动态生成 id 已核对），无运行时错误。');
+
+/* ---- 第五轮：GitHub Agent Skill 方法论集成（2026-11-17） ---- */
+gapMd.push('');
+gapMd.push('---');
+gapMd.push('');
+gapMd.push('## 10. 第五轮：GitHub Agent Skill 调研与方法论集成（2026-11-17）');
+gapMd.push('');
+gapMd.push('按用户要求赴 GitHub 检索 1000+ Agent Skill，筛选后集成。真实数据：sickn33/agentic-awesome-skills 索引 2,981 个 skill（safe 1,110 / critical 1,614 / offensive 151），另有 anthropics/skills 官方库（196k★）、VoltAgent/awesome-agent-skills（1,000+）、ComposioHQ/awesome-claude-skills（79.7k★）。详见 `docs/github-skills-integration.md`。');
+gapMd.push('');
+gapMd.push('### 10.1 关键认知与集成方式');
+gapMd.push('');
+gapMd.push('- 这些 skill 是给 Claude Code/Cursor/Codex 等**编程 Agent** 的方法论指令（SKILL.md），不是可塞进网页运行的插件。因此采用「提炼 safe skill 方法论 → 转化为客服 Agent 真实能力」的方式，而非假装安装。');
+gapMd.push('- **风险筛查**：样本中 54% 为 critical/offensive，仅采纳 `risk=safe` 且来源明确的 skill，未引入任何高风险项或需服务端凭证的代码。');
+gapMd.push('');
+gapMd.push('### 10.2 落地能力（6 项）');
+gapMd.push('');
+gapMd.push('1. **混合检索（hybrid-search-implementation）**：FAQ 检索升级为字面精确 + 语义 n-gram + 关键词 + 意图的混合排序，返回可解释分项分数；后台开关与权重可配。');
+gapMd.push('2. **回归评测（agent-evaluation, Apache-2.0）**：版本化冻结用例，逐条跑全决策链；关键安全失败单独计数不被平均分掩盖；Wilson 95% 置信区间（10/10 不等于 100% 可靠）。后台「Skill 实验室」可运行。');
+gapMd.push('3. **偏见缓解清单（advanced-evaluation）**：位置/长度/自增强/评分漂移四类 LLM-as-Judge 偏见的缓解动作。');
+gapMd.push('4. **访客长期记忆（agent-memory-systems）**：语义/情景/程序化三层记忆，按访客 id 隔离，可配保留天数。');
+gapMd.push('5. **多语言覆盖自查（i18n-localization）**：翻译键完整度报告。');
+gapMd.push('6. **无障碍自查（accessibility-audit）**：WCAG 2.2 自动项与人工核验项分离，未测项不视为通过。');
+gapMd.push('');
+gapMd.push('### 10.3 局限');
+gapMd.push('');
+gapMd.push('- 仅实现方法论，未引入任何第三方可执行代码（规避供应链风险）。');
+gapMd.push('- 回归评测当前以规则 `simulate()` 为被测对象；评测真实 LLM 输出需配置 API Key 并替换 verifier。');
+gapMd.push('');
+gapMd.push('### 10.4 第五轮验证');
+gapMd.push('');
+gapMd.push('- 四个 JS `node --check` 通过，无硬编码密钥。');
+gapMd.push('- 第五轮方法桩测试 12 项全过（Wilson 区间、混合检索分项与开关、回归套件、偏见清单、访客记忆分层、i18n/a11y 自查）。');
+gapMd.push('- DOM 桩完整初始化测试通过：core.js + admin.js 在 133 个 id 下无运行时异常，新增「Skill 实验室」页全部 id 命中。');
 fs.writeFileSync(path.join(OUT_DIR, 'gap-analysis.md'), gapMd.join('\n'), 'utf8');
 
 console.log(JSON.stringify({ total: rows.length, counts, priorities: prio, files: ['feature-catalog.md','feature-catalog.csv','gap-analysis.md'] }, null, 2));
