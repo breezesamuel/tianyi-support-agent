@@ -101,7 +101,23 @@
   function md(text) {
     var t = U.escapeHtml(String(text || '').replace(/\[\[HANDOFF\]\]/g, ''));
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    return t.replace(/\n/g, '<br>');
+    t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+    /* 仅放行 http(s) 链接，防止 javascript: 注入 */
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    /* 简易列表：连续的 "- " 行渲染为 ul */
+    var lines = t.split(/\n/), out = [], inList = false;
+    lines.forEach(function (ln) {
+      var m = ln.match(/^\s*[-·]\s+(.*)$/);
+      if (m) {
+        if (!inList) { out.push('<ul>'); inList = true; }
+        out.push('<li>' + m[1] + '</li>');
+      } else {
+        if (inList) { out.push('</ul>'); inList = false; }
+        if (ln) out.push(ln);
+      }
+    });
+    if (inList) out.push('</ul>');
+    return out.join('<br>').replace(/<br><ul>/g, '<ul>').replace(/<\/ul><br>/g, '</ul>');
   }
 
   function currentConv() { return currentId ? Store.getConversation(currentId) : null; }
@@ -147,9 +163,17 @@
 
   /* ---------- messages ---------- */
   function welcomeHtml() {
+    var conv = currentConv();
+    /* A/B 实验：当前会话命中的变体文案优先 */
+    var text = Store.state().settings.welcome;
+    if (conv && conv.abVariant) {
+      var v = (Store.state().settings.abTest || {}).variants || [];
+      var hit = v.filter(function (x) { return x.id === conv.abVariant && x.text; })[0];
+      if (hit) text = hit.text;
+    }
     return '<div class="welcome-card">' +
       '<h3>' + t('welcomeTitle') + '</h3>' +
-      '<p>' + U.escapeHtml(Store.state().settings.welcome) + '</p>' +
+      '<p>' + U.escapeHtml(text) + '</p>' +
       '<div class="quick-chips">' + QUICK.map(function (q) {
         return '<button class="quick-chip" data-q="' + U.escapeHtml(q) + '">' + U.escapeHtml(q) + '</button>';
       }).join('') + '</div></div>';
@@ -199,7 +223,10 @@
         rating = '<div class="rating-box"><span class="rating-done">' + t('rated') + conv.rating.score + t('stars') + '</span>' +
           (conv.rating.comment ? '<span class="muted">' + U.escapeHtml(conv.rating.comment) + '</span>' : '') + '</div>';
       } else {
+        var autoInvite = conv.status === 'resolved' &&
+          (Store.state().settings.satisfaction || {}).autoInvite !== false;
         rating = '<div class="rating-box" data-rating-box data-score="' + pendingScore + '">' +
+          (autoInvite ? '<span class="muted" style="display:block;margin-bottom:4px">' + t('inviteRate') + '</span>' : '') +
           '<span>' + t('rateQ') + '</span>' +
           '<div class="stars">' + [1, 2, 3, 4, 5].map(function (n) {
             return '<button class="star ' + (n <= pendingScore ? 'on' : '') + '" data-score="' + n + '" title="' + n + t('stars') + '">★</button>';
@@ -210,9 +237,16 @@
         '</div>';
       }
     }
+    var bodyHtml = m.type === 'image' && m.data
+      ? '<div class="bubble"><img class="chat-img" src="' + m.data + '" alt="访客发送的图片" loading="lazy" style="max-width:220px;border-radius:10px;display:block">' + (m.content && m.content !== '[图片]' ? '<span style="display:block;margin-top:6px">' + md(m.content) + '</span>' : '') + '</div>'
+      : '<div class="bubble">' + md(m.content) + '</div>';
+    /* 语音合成：机器人回答可朗读（SpeechSynthesis，浏览器不支持时按钮隐藏） */
+    var speakBtn = (!isUser && m.content && window.speechSynthesis)
+      ? '<button class="speak-btn" data-speak="' + U.escapeHtml(String(m.content).replace(/"/g, '&quot;').slice(0, 600)) + '" title="' + t('speakAnswer') + '" aria-label="' + t('speakAnswer') + '">🔊</button>'
+      : '';
     return '<div class="msg-row ' + (isUser ? 'user' : 'bot') + '">' +
       '<div class="msg-avatar">' + (isUser ? '我' : '医') + '</div>' +
-      '<div class="msg-body"><div class="bubble">' + md(m.content) + '</div>' + meta + sources + handoff + rating + '</div>' +
+      '<div class="msg-body">' + bodyHtml + speakBtn + meta + sources + handoff + rating + '</div>' +
     '</div>';
   }
 
@@ -339,6 +373,20 @@
   }
 
   /* ---------- main answer flow ---------- */
+  /* 图片消息：入库 + 引导补充文字描述（当前模型不支持看图，诚实说明） */
+  function sendImage(data) {
+    if (busy) return;
+    var conv = currentConv() || (newChat(), currentConv());
+    Store.addMessage(conv.id, { role: 'user', type: 'image', content: '[图片]', data: data });
+    renderAll();
+    Store.addMessage(conv.id, {
+      role: 'assistant',
+      content: '已收到您发送的图片。当前助手暂时无法直接识别图片内容，请用文字补充描述问题（例如订单号、报错提示），我们会更快地帮助您。',
+      engine: '图片接收'
+    });
+    renderAll();
+  }
+
   async function send(text) {
     text = String(text || '').trim();
     if (!text || busy) return;
@@ -453,6 +501,16 @@
     var clean = full.replace(/\[\[HANDOFF\]\]/g, '').trim();
     if (!clean) clean = '抱歉，暂时没有生成有效回答，已为您转接人工客服。';
 
+    /* LLM 实时翻译：英文界面且开启 translate 时，把回答译为英文展示（原文保留在 translatedFrom） */
+    var translatedFrom = '';
+    var uiLang = Store.state().settings.language;
+    if (llmUsed && uiLang === 'en' && (Store.state().settings.llm || {}).translate) {
+      try {
+        var tr = await Engine.translateText(clean, 'en');
+        if (tr) { translatedFrom = clean; clean = tr; }
+      } catch (e) { /* 翻译失败时保持原文 */ }
+    }
+
     var reason = '';
     if (intent.key === 'human') reason = '用户主动要求人工客服';
     else if (mood.level <= 2 && !/没用|答非所问|还是不行|解决不了|投诉|太差|不满意/.test(text)) reason = '检测到负面情绪（' + TY.sentimentLabel(mood.level) + '），优先人工跟进';
@@ -467,6 +525,7 @@
     var complianceFlags = Engine.scanCompliance(clean);
     var botMsg = Store.addMessage(conv.id, {
       role: 'assistant', content: clean,
+      translatedFrom: translatedFrom,
       intent: intent.key,
       engine: llmUsed ? '大模型 + 知识库' : '知识库规则引擎',
       sources: retrieval.hits.map(function (h) { return { question: h.faq.question, score: h.score, id: h.faq.id }; }),
@@ -656,6 +715,66 @@
           renderAll();
         }
       }
+      /* 语音合成朗读 */
+      var speakBtn = e.target.closest('[data-speak]');
+      if (speakBtn) {
+        var text = speakBtn.getAttribute('data-speak') || '';
+        if (window.speechSynthesis) {
+          if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); return; }
+          var utter = new window.SpeechSynthesisUtterance(text.slice(0, 600));
+          utter.lang = Store.state().settings.language === 'en' ? 'en-US' : 'zh-CN';
+          utter.rate = 1;
+          window.speechSynthesis.speak(utter);
+        }
+      }
+    });
+
+    /* emoji 快捷面板 */
+    var EMOJIS = ['😊','🙏','👍','😀','😅','🤔','😢','😤','💡','❓','✅','❌','💰','📦','⏰','📋','🤒','🌿','📖','💬'];
+    var panel = el('emojiPanel');
+    panel.innerHTML = EMOJIS.map(function (em) {
+      return '<button type="button" data-emoji="' + em + '" aria-label="插入 ' + em + '">' + em + '</button>';
+    }).join('');
+    el('emojiBtn').addEventListener('click', function () {
+      panel.classList.toggle('hidden');
+      el('emojiBtn').setAttribute('aria-expanded', panel.classList.contains('hidden') ? 'false' : 'true');
+    });
+    panel.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-emoji]');
+      if (!b) return;
+      var input = el('msgInput');
+      input.value += b.getAttribute('data-emoji');
+      input.focus();
+      autoResize();
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('#emojiPanel') && !e.target.closest('#emojiBtn')) panel.classList.add('hidden');
+    });
+
+    /* 图片消息：压缩到 640px / JPEG 0.7 后入库 */
+    el('imgBtn').addEventListener('click', function () { el('imgFile').click(); });
+    el('imgFile').addEventListener('change', function () {
+      var file = el('imgFile').files && el('imgFile').files[0];
+      el('imgFile').value = '';
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { U.toast('请选择图片文件', 'warn'); return; }
+      if (file.size > 8 * 1024 * 1024) { U.toast('图片过大（超过 8MB），请压缩后重试', 'warn'); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var canvas = document.createElement('canvas');
+          var scale = Math.min(1, 640 / Math.max(img.width, img.height));
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          var data = canvas.toDataURL('image/jpeg', 0.7);
+          sendImage(data);
+        };
+        img.onerror = function () { U.toast('图片读取失败', 'error'); };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
     });
 
     el('suggestList').addEventListener('click', function (e) {
