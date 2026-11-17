@@ -340,7 +340,22 @@ table.data tbody tr:hover { background: #fbf9f3; cursor: pointer; }
 .badge.gold { background: var(--gold-soft); color: #8a6c2c; }
 .badge.gray { background: var(--surface-2); color: var(--ink-2); }
 .badge.purple { background: #f1e9f3; color: var(--purple); }
+.badge.amber { background: #fbeed6; color: #96601a; }
 .stars-small { color: var(--gold); letter-spacing: 1px; }
+
+/* 第四轮：批量操作栏 / 坐席协作台 / 拆分勾选 */
+.batchbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--jade-soft); border: 1px solid #cfe0d6; border-radius: 10px; padding: 9px 12px; margin-bottom: 12px; }
+.batchbar .select { min-width: 130px; font-size: 12px; padding: 5px 8px; }
+.collab-box { margin-top: 14px; border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; background: var(--surface-1); }
+.collab-title { font-size: 12px; font-weight: 700; color: var(--jade-deep); letter-spacing: .5px; margin-bottom: 6px; }
+.collab-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-top: 1px dashed var(--line); font-size: 12px; }
+.collab-row:first-of-type { border-top: none; }
+.collab-row > span:first-child { flex: 0 0 92px; color: var(--ink-3); font-weight: 600; }
+.collab-row > div:last-child { flex: 1; min-width: 0; }
+.collab-row .input, .collab-row .select, .collab-row .textarea { width: 100%; font-size: 12px; }
+.collab-row .textarea { min-height: 52px; resize: vertical; }
+.split-pick { display: inline-flex; align-items: center; margin-right: 2px; cursor: pointer; }
+.split-pick input { width: 13px; height: 13px; cursor: pointer; }
 
 .drawer-mask { position: fixed; inset: 0; background: rgba(28, 34, 30, .38); z-index: 50; display: none; }
 .drawer-mask.open { display: block; }
