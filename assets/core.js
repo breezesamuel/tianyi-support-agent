@@ -35,7 +35,10 @@
       'placeholder': '请描述您的问题，例如：我的订单还没开通 / 如何申请退款…',
       'composerFoot': '按 Enter 发送，Shift + Enter 换行 · 回答由知识库与大模型辅助生成，请以平台实际规则为准',
       'welcomeTitle': '您好，我是天医小助手', 'mood': '情绪', 'language': '语言',
-      'proactiveDefault': '您好，还有疑问吗？可以随时告诉我，或回复「转人工」由客服为您服务。'
+      'proactiveDefault': '您好，还有疑问吗？可以随时告诉我，或回复「转人工」由客服为您服务。',
+      'aiDisclosure': '您正在与 AI 智能助手对话', 'aiDisclosureTip': '回答由知识库与大模型辅助生成，请以平台实际规则为准；如需人工请回复「转人工」。',
+      'voice': '语音输入', 'voiceListening': '正在聆听…', 'voiceUnsupported': '当前浏览器不支持语音输入，请使用文字输入',
+      'piiAlert': '检测到敏感信息，已为您脱敏处理', 'skipToChat': '跳转到对话区', 'fontSize': '字号', 'contrast': '高对比度'
     },
     en: {
       'brand': 'Tianyi · Smart Support', 'admin': 'Admin console', 'newChat': '＋ New chat', 'help': '▣ Help center',
@@ -51,7 +54,10 @@
       'placeholder': 'Describe your question, e.g. my order is not activated / how to request a refund…',
       'composerFoot': 'Enter to send, Shift + Enter for new line · Answers are generated from the FAQ and AI, please refer to official platform rules',
       'welcomeTitle': 'Hello, I am Tianyi Assistant', 'mood': 'Mood', 'language': 'Language',
-      'proactiveDefault': 'Still need help? Just let me know, or type "human agent" to reach our team.'
+      'proactiveDefault': 'Still need help? Just let me know, or type "human agent" to reach our team.',
+      'aiDisclosure': 'You are talking to an AI assistant', 'aiDisclosureTip': 'Answers are generated from the FAQ and AI. Please refer to official platform rules. Type "human agent" for a person.',
+      'voice': 'Voice input', 'voiceListening': 'Listening…', 'voiceUnsupported': 'Voice input is not supported in this browser. Please type instead.',
+      'piiAlert': 'Sensitive information detected and masked', 'skipToChat': 'Skip to conversation', 'fontSize': 'Font size', 'contrast': 'High contrast'
     }
   };
 
@@ -62,6 +68,38 @@
     4: { key: 4, label: '满意', en: 'Satisfied', color: '#2f6b5f' },
     5: { key: 5, label: '赞赏', en: 'Delighted', color: '#2f6b5f' }
   };
+
+  /* PII 敏感信息识别（竞品 Guardrails / PII Redaction 的本地规则版）
+     模式：mask 中间脱敏 / token 替换为占位符 / alert 仅告警 */
+  var PII_RULES = [
+    { key: 'phone', label: '手机号', pattern: /(?<!\d)1[3-9]\d{9}(?!\d)/g, token: '[PHONE]' },
+    { key: 'idcard', label: '身份证号', pattern: /(?<!\d)\d{17}[\dXx](?!\d)/g, token: '[ID_CARD]' },
+    { key: 'bankcard', label: '银行卡号', pattern: /(?<!\d)\d{16,19}(?!\d)/g, token: '[CARD]' },
+    { key: 'email', label: '邮箱', pattern: /[\w.+-]+@[\w-]+\.[\w.-]+/g, token: '[EMAIL]' },
+    { key: 'order', label: '订单号', pattern: /(?<!\d)\d{10,16}(?!\d)/g, token: '[ORDER_ID]' }
+  ];
+  function maskValue(v) {
+    var s = String(v);
+    if (s.length <= 4) return '*'.repeat(s.length);
+    if (s.indexOf('@') > 0) {
+      var parts = s.split('@');
+      return parts[0].slice(0, 1) + '***@' + parts[1];
+    }
+    return s.slice(0, 3) + '*'.repeat(Math.max(2, s.length - 7)) + s.slice(-4);
+  }
+
+  /* QA 质检评分卡（竞品 Intercom Custom Scorecards / Fin CX Score 的本地规则版）
+     每维 0-2 分，按权重汇总为 1-5 分；critical 项失败则整单不通过 */
+  var QA_DIMENSIONS = [
+    { key: 'grounded', label: '答案有据', en: 'Grounded answer', weight: 30, critical: true,
+      hint: '回答是否引用了知识库来源、是否有可核对的依据' },
+    { key: 'compliance', label: '合规安全', en: 'Compliance safety', weight: 30, critical: true,
+      hint: '是否命中敏感表述、是否附带非诊疗提示' },
+    { key: 'resolution', label: '问题解决', en: 'Issue resolved', weight: 25, critical: false,
+      hint: '是否给出明确解答或已妥善转人工' },
+    { key: 'empathy', label: '服务态度', en: 'Empathy & tone', weight: 15, critical: false,
+      hint: '负面情绪是否被识别并安抚' }
+  ];
 
   var FAQ_CATEGORIES = ['订单与支付', '退款与售后', '技术支持', '产品与服务', '健康与合规', '人工服务'];
 
@@ -158,6 +196,36 @@
       trigger: 'idle',
       seconds: 45,
       text: '您好，还有疑问吗？可以随时告诉我，或回复「转人工」由客服为您服务。'
+    },
+    /* 第三轮：EU AI Act Art.50 透明度 —— 明确告知用户在与 AI 对话 */
+    disclosure: {
+      enabled: true,
+      text: '您正在与 AI 智能助手对话。回答由知识库与大模型辅助生成，请以平台实际规则为准。'
+    },
+    /* 第三轮：PII 检测与脱敏策略 */
+    privacy: {
+      enabled: true,
+      mode: 'mask', // mask | token | alert
+      rules: ['phone', 'idcard', 'bankcard', 'email', 'order'],
+      logRedactions: true
+    },
+    /* 第三轮：QA 质检评分卡 */
+    qa: {
+      enabled: true,
+      passScore: 3.5,
+      dimensions: QA_DIMENSIONS.map(function (d) { return { key: d.key, weight: d.weight, critical: d.critical }; })
+    },
+    /* 第三轮：WCAG 2.2 无障碍偏好（访客本机保存，可后台设默认） */
+    a11y: {
+      largeText: false,
+      highContrast: false,
+      reduceMotion: false,
+      announcements: true
+    },
+    /* 第三轮：Web Speech 语音输入 */
+    voice: {
+      enabled: true,
+      lang: 'zh-CN'
     }
   };
 
@@ -261,6 +329,138 @@
     } catch (e) { /* audit must never break writes */ }
   }
 
+  /* ---------------- PII detection & redaction (第三轮) ----------------
+     在任何内容进入日志/云端/大模型之前先识别敏感信息；
+     不保证 100% 覆盖（正则的固有局限），但提供可审计、可回放的脱敏记录。 */
+  function detectPii(text) {
+    var s = String(text || '');
+    var cfg = load().settings.privacy || DEFAULT_SETTINGS.privacy;
+    var enabledRules = Array.isArray(cfg.rules) ? cfg.rules : DEFAULT_SETTINGS.privacy.rules;
+    var found = [];
+    PII_RULES.forEach(function (rule) {
+      if (enabledRules.indexOf(rule.key) < 0) return;
+      var re = new RegExp(rule.pattern.source, rule.pattern.flags);
+      var m;
+      while ((m = re.exec(s)) !== null) {
+        found.push({ key: rule.key, label: rule.label, value: m[0], token: rule.token, index: m.index });
+        if (!m[0].length) re.lastIndex++;
+      }
+    });
+    // 长串优先（订单号/银行卡比手机号更长），避免短规则重复覆盖同一段
+    found.sort(function (a, b) { return b.value.length - a.value.length; });
+    var used = [], out = [];
+    found.forEach(function (f) {
+      var overlap = used.some(function (r) { return !(f.index + f.value.length <= r.start || f.index >= r.end); });
+      if (!overlap) { out.push(f); used.push({ start: f.index, end: f.index + f.value.length }); }
+    });
+    return out.sort(function (a, b) { return a.index - b.index; });
+  }
+  function redactPii(text, mode) {
+    var cfg = load().settings.privacy || DEFAULT_SETTINGS.privacy;
+    if (cfg.enabled === false) return { text: String(text || ''), hits: [], mode: 'off' };
+    var m = mode || cfg.mode || 'mask';
+    var hits = detectPii(text);
+    if (!hits.length) return { text: String(text || ''), hits: [], mode: m };
+    var out = String(text || ''), offset = 0;
+    hits.forEach(function (h) {
+      var replacement = m === 'token' ? h.token : (m === 'alert' ? h.value : maskValue(h.value));
+      var start = h.index + offset;
+      out = out.slice(0, start) + replacement + out.slice(start + h.value.length);
+      offset += replacement.length - h.value.length;
+    });
+    if (m !== 'alert' && cfg.logRedactions !== false) {
+      audit('pii.redact', hits.map(function (h) { return h.label; }).join('/') + ' → ' + m);
+    }
+    return { text: out, hits: hits, mode: m };
+  }
+
+  /* ---------------- QA scorecard (第三轮) ---------------- */
+  function scoreConversation(convId) {
+    var s = load();
+    var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+    if (!c) return null;
+    var msgs = c.messages || [];
+    var botMsgs = msgs.filter(function (m) { return m.role === 'assistant' && !m.proactive; });
+    var userMsgs = msgs.filter(function (m) { return m.role === 'user'; });
+    var sourcesCount = botMsgs.filter(function (m) { return m.sources && m.sources.length; }).length;
+    var flagged = msgs.some(function (m) { return m.complianceFlags && m.complianceFlags.length; });
+    var hasHandoff = c.status === 'waiting_human' || msgs.some(function (m) { return m.handoff; });
+    var hasHealth = c.intent === 'health' || userMsgs.some(function (m) { return /诊断|治疗|用药|药方|处方/.test(String(m.content || '')); });
+    var healthCovered = !hasHealth || botMsgs.some(function (m) { return /就医|医师|不构成|科普|参考/.test(String(m.content || '')); });
+    var negativeMood = (c.mood || 3) <= 2;
+    var moodHandled = !negativeMood || hasHandoff || botMsgs.some(function (m) { return /理解|抱歉|抱歉|人工|重视/.test(String(m.content || '')); });
+    var ratedGood = c.rating && c.rating.score >= 4;
+    var dimScores = {
+      grounded: sourcesCount ? (sourcesCount >= botMsgs.length / 2 ? 2 : 1) : 0,
+      compliance: (flagged ? 0 : (healthCovered ? 2 : 1)),
+      resolution: (hasHandoff ? 1 : (ratedGood || c.status === 'resolved' ? 2 : (botMsgs.length ? 1 : 0))),
+      empathy: (moodHandled ? 2 : (negativeMood ? 0 : 1))
+    };
+    var cfg = s.settings.qa || DEFAULT_SETTINGS.qa;
+    var dims = Array.isArray(cfg.dimensions) && cfg.dimensions.length ? cfg.dimensions : DEFAULT_SETTINGS.qa.dimensions;
+    var totalW = dims.reduce(function (a, d) { return a + (Number(d.weight) || 0); }, 0) || 100;
+    var raw = dims.reduce(function (a, d) { return a + (dimScores[d.key] || 0) * (Number(d.weight) || 0); }, 0) / totalW; // 0..2
+    var score = Math.round((1 + raw) * 10) / 10; // 映射到 1..5
+    var failedCritical = dims.filter(function (d) { return d.critical && dimScores[d.key] === 0; }).map(function (d) { return d.key; });
+    return {
+      conversationId: convId, score: clamp(score, 1, 5), dims: dimScores,
+      pass: failedCritical.length === 0 && score >= (Number(cfg.passScore) || 3.5),
+      failedCritical: failedCritical, at: Date.now()
+    };
+  }
+  function qaStats() {
+    var s = load();
+    var scored = s.conversations.filter(function (c) { return (c.messages || []).some(function (m) { return m.role === 'assistant'; }); })
+      .map(function (c) { return scoreConversation(c.id); }).filter(Boolean);
+    var pass = scored.filter(function (r) { return r.pass; }).length;
+    var avg = scored.length ? scored.reduce(function (a, r) { return a + r.score; }, 0) / scored.length : 0;
+    var failures = {};
+    scored.forEach(function (r) {
+      r.failedCritical.forEach(function (k) { failures[k] = (failures[k] || 0) + 1; });
+    });
+    return { total: scored.length, pass: pass, passRate: scored.length ? pass / scored.length : 0,
+      avg: avg, failures: failures };
+  }
+
+  /* 真实解决率指标（竞品区分 containment/false-resolution 的做法） */
+  function trueMetrics() {
+    var s = load();
+    var convs = s.conversations;
+    var n = convs.length;
+    var contained = 0, resolvedVerified = 0, repeat = 0, fallback = 0, withMsgs = 0;
+    var windowMs = 7 * 86400000;
+    convs.forEach(function (c) {
+      var msgs = c.messages || [];
+      if (!msgs.some(function (m) { return m.role === 'user'; })) return;
+      withMsgs++;
+      var hasHandoff = c.status === 'waiting_human' || msgs.some(function (m) { return m.handoff; });
+      if (!hasHandoff) contained++;
+      var hasSource = msgs.some(function (m) { return m.sources && m.sources.length; });
+      if ((c.rating && c.rating.score >= 4) || (c.status === 'resolved' && hasSource)) resolvedVerified++;
+      var noHit = msgs.some(function (m) { return m.role === 'assistant' && /知识库中暂时没有找到|没有找到与/.test(String(m.content || '')); });
+      if (noHit) fallback++;
+      var firstUser = msgs.filter(function (m) { return m.role === 'user'; })[0];
+      if (firstUser) {
+        var q = normalize(firstUser.content).slice(0, 12);
+        var earlier = convs.some(function (o) {
+          if (o.id === c.id || !o.visitor || o.visitor.id !== (c.visitor || {}).id) return false;
+          if (!(o.createdAt < c.createdAt && c.createdAt - o.createdAt <= windowMs)) return false;
+          var ou = (o.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+          return ou && normalize(ou.content).slice(0, 12) === q;
+        });
+        if (earlier) repeat++;
+      }
+    });
+    return {
+      total: n, withMessages: withMsgs,
+      containmentRate: withMsgs ? contained / withMsgs : 0,
+      verifiedResolutionRate: withMsgs ? resolvedVerified / withMsgs : 0,
+      fallbackRate: withMsgs ? fallback / withMsgs : 0,
+      repeatContactRate: withMsgs ? repeat / withMsgs : 0,
+      overstatement: withMsgs ? Math.max(0, (contained - resolvedVerified) / withMsgs) : 0
+    };
+  }
+
   /* ---------------- state ---------------- */
   function initialState() {
     var t = Date.now();
@@ -299,6 +499,11 @@
           S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (parsed.settings && parsed.settings.notice) || {});
           S.settings.routing = Object.assign({}, DEFAULT_SETTINGS.routing, (parsed.settings && parsed.settings.routing) || {});
           S.settings.proactive = Object.assign({}, DEFAULT_SETTINGS.proactive, (parsed.settings && parsed.settings.proactive) || {});
+          S.settings.disclosure = Object.assign({}, DEFAULT_SETTINGS.disclosure, (parsed.settings && parsed.settings.disclosure) || {});
+          S.settings.privacy = Object.assign({}, DEFAULT_SETTINGS.privacy, (parsed.settings && parsed.settings.privacy) || {});
+          S.settings.qa = Object.assign({}, DEFAULT_SETTINGS.qa, (parsed.settings && parsed.settings.qa) || {});
+          S.settings.a11y = Object.assign({}, DEFAULT_SETTINGS.a11y, (parsed.settings && parsed.settings.a11y) || {});
+          S.settings.voice = Object.assign({}, DEFAULT_SETTINGS.voice, (parsed.settings && parsed.settings.voice) || {});
           if (!S.settings.language) S.settings.language = 'zh';
           S.settings.canned = Array.isArray(S.settings.canned) ? S.settings.canned : DEFAULT_SETTINGS.canned;
           S.settings.agents = Array.isArray(S.settings.agents) ? S.settings.agents : DEFAULT_SETTINGS.agents;
@@ -344,6 +549,11 @@
       S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (obj.settings && obj.settings.notice) || {});
       S.settings.routing = Object.assign({}, DEFAULT_SETTINGS.routing, (obj.settings && obj.settings.routing) || {});
       S.settings.proactive = Object.assign({}, DEFAULT_SETTINGS.proactive, (obj.settings && obj.settings.proactive) || {});
+      S.settings.disclosure = Object.assign({}, DEFAULT_SETTINGS.disclosure, (obj.settings && obj.settings.disclosure) || {});
+      S.settings.privacy = Object.assign({}, DEFAULT_SETTINGS.privacy, (obj.settings && obj.settings.privacy) || {});
+      S.settings.qa = Object.assign({}, DEFAULT_SETTINGS.qa, (obj.settings && obj.settings.qa) || {});
+      S.settings.a11y = Object.assign({}, DEFAULT_SETTINGS.a11y, (obj.settings && obj.settings.a11y) || {});
+      S.settings.voice = Object.assign({}, DEFAULT_SETTINGS.voice, (obj.settings && obj.settings.voice) || {});
       if (!S.settings.language) S.settings.language = 'zh';
       S.settings.canned = Array.isArray(S.settings.canned) ? S.settings.canned : DEFAULT_SETTINGS.canned;
       S.settings.agents = Array.isArray(S.settings.agents) ? S.settings.agents : DEFAULT_SETTINGS.agents;
@@ -367,6 +577,29 @@
       var r = Store.updateSettings({ language: l });
       audit('settings.language', l);
       return r;
+    },
+    setA11y: function (patch) {
+      return Store.mutate(function (s) {
+        s.settings.a11y = Object.assign({}, DEFAULT_SETTINGS.a11y, s.settings.a11y || {}, patch || {});
+        return s.settings.a11y;
+      });
+    },
+    saveQa: function (convId) {
+      var result = scoreConversation(convId);
+      if (!result) return null;
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (c) { c.qa = result; }
+        audit('qa.score', convId + ' → ' + result.score + (result.pass ? ' ✓' : ' ✗'));
+        return result;
+      });
+    },
+    setQaReview: function (convId, reviewed) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (c && c.qa) { c.qa.reviewed = !!reviewed; c.qa.reviewedAt = Date.now(); }
+        return c ? c.qa : null;
+      });
     },
     setAssignee: function (convId, agentId) {
       return Store.mutate(function (s) {
@@ -713,7 +946,9 @@
           convs.forEach(function (c) { if (c.assignee && map[c.assignee]) map[c.assignee].count++; });
           return map;
         })(),
-        gaps: Store.knowledgeGaps().length
+        gaps: Store.knowledgeGaps().length,
+        trueMetrics: trueMetrics(),
+        qa: qaStats()
       };
     }
   };
@@ -995,6 +1230,11 @@
     S.settings.notice = Object.assign({}, local.settings.notice || DEFAULT_SETTINGS.notice, (remote.settings && remote.settings.notice) || {});
     S.settings.routing = Object.assign({}, local.settings.routing || DEFAULT_SETTINGS.routing, (remote.settings && remote.settings.routing) || {});
     S.settings.proactive = Object.assign({}, local.settings.proactive || DEFAULT_SETTINGS.proactive, (remote.settings && remote.settings.proactive) || {});
+    S.settings.disclosure = Object.assign({}, local.settings.disclosure || DEFAULT_SETTINGS.disclosure, (remote.settings && remote.settings.disclosure) || {});
+    S.settings.privacy = Object.assign({}, local.settings.privacy || DEFAULT_SETTINGS.privacy, (remote.settings && remote.settings.privacy) || {});
+    S.settings.qa = Object.assign({}, local.settings.qa || DEFAULT_SETTINGS.qa, (remote.settings && remote.settings.qa) || {});
+    S.settings.a11y = Object.assign({}, local.settings.a11y || DEFAULT_SETTINGS.a11y, (remote.settings && remote.settings.a11y) || {});
+    S.settings.voice = Object.assign({}, local.settings.voice || DEFAULT_SETTINGS.voice, (remote.settings && remote.settings.voice) || {});
     S.settings.llm.apiKey = llmKey;
     S.settings.cloud.key = cloudKey;
     S.handoffs = Array.isArray(remote.handoffs) ? remote.handoffs : (local.handoffs || []);
@@ -1103,10 +1343,17 @@
       buildFallbackAnswer: buildFallbackAnswer,
       scanCompliance: scanCompliance,
       simulate: simulate,
-      detectSentiment: detectSentiment
+      detectSentiment: detectSentiment,
+      detectPii: detectPii,
+      redactPii: redactPii,
+      scoreConversation: scoreConversation,
+      qaStats: qaStats,
+      trueMetrics: trueMetrics
     },
     I18N: I18N,
     SENTIMENTS: SENTIMENTS,
+    PII_RULES: PII_RULES,
+    QA_DIMENSIONS: QA_DIMENSIONS,
     t: t,
     intentLabel: intentLabel,
     sentimentLabel: sentimentLabel,
