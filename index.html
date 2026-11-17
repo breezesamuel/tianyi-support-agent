@@ -77,12 +77,16 @@
           <textarea id="msgInput" rows="1" placeholder="请描述您的问题，例如：我的订单还没开通 / 如何申请退款…" autocomplete="off" aria-label="输入您的问题"></textarea>
           <button class="btn btn-ghost btn-icon voice-btn" id="voiceBtn" title="语音输入" aria-label="语音输入" aria-pressed="false">🎙</button>
           <div class="composer-actions">
+            <button class="btn btn-ghost btn-icon" id="emojiBtn" title="表情" aria-label="插入表情">😊</button>
+            <button class="btn btn-ghost btn-icon" id="imgBtn" title="发送图片" aria-label="发送图片">📷</button>
+            <input type="file" id="imgFile" accept="image/*" class="hidden" aria-hidden="true" tabindex="-1">
             <button class="btn btn-ghost btn-icon hidden" id="stopBtn" title="停止生成">■</button>
             <button class="send-btn" id="sendBtn" title="发送">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg>
             </button>
           </div>
         </div>
+        <div class="emoji-panel hidden" id="emojiPanel" role="menu" aria-label="常用表情"></div>
       </div>
       <div class="composer-foot" id="composerFoot">按 Enter 发送，Shift + Enter 换行 · 回答由知识库与大模型辅助生成，请以平台实际规则为准</div>
     </div>
