@@ -24,6 +24,7 @@
     </nav>
     <div class="admin-side-foot">
       <a href="index.html">← 返回客服对话页</a><br><br>
+      <a href="help.html">▣ 打开帮助中心</a><br><br>
       本地优先 · 可启用云端同步
     </div>
   </aside>
@@ -72,6 +73,10 @@
           <div class="divider"></div>
           <div class="bar-list" id="faqBars"></div>
         </div>
+        <div class="panel">
+          <div class="panel-head"><h3>合规质检预警</h3><span class="spacer"></span><span class="tag" id="complianceTag">0 条</span></div>
+          <div id="complianceAlerts"></div>
+        </div>
       </div>
       <div class="panel">
         <div class="panel-head"><h3>最近的人工工单</h3><span class="spacer"></span><button class="btn btn-sm" data-goto="handoffs">查看全部 →</button></div>
@@ -89,7 +94,7 @@
         <span class="muted" id="convCount" style="font-size:12px"></span>
       </div>
       <div class="table-wrap"><table class="data">
-        <thead><tr><th>会话</th><th>识别意图</th><th>状态</th><th>消息数</th><th>满意度</th><th>最近活动</th><th>操作</th></tr></thead>
+        <thead><tr><th>会话</th><th>识别意图</th><th>状态</th><th>SLA</th><th>消息数</th><th>满意度</th><th>最近活动</th><th>操作</th></tr></thead>
         <tbody id="convTable"></tbody>
       </table></div>
     </section>
@@ -212,6 +217,20 @@
             <div class="sr-text"><b>自动转人工</b><small>无法解决时自动生成人工工单</small></div>
             <label class="switch"><input type="checkbox" id="setAutoHandoff"><span></span></label>
           </div>
+          <div class="divider"></div>
+          <div class="switch-row">
+            <div class="sr-text"><b>启用 SLA 预警</b><small>超过阈值在后台标记超时</small></div>
+            <label class="switch"><input type="checkbox" id="setSlaEnabled"><span></span></label>
+          </div>
+          <div class="settings-grid" style="gap:10px;margin-top:10px">
+            <div class="field" style="margin:0"><label>首响阈值（分钟）</label><input class="input" id="setSlaFirst" type="number" min="1" max="120"></div>
+            <div class="field" style="margin:0"><label>解决阈值（小时）</label><input class="input" id="setSlaHours" type="number" min="1" max="720"></div>
+          </div>
+          <div class="switch-row" style="margin-top:12px">
+            <div class="sr-text"><b>访客端公告</b><small>在对话页顶部显示一条主动消息</small></div>
+            <label class="switch"><input type="checkbox" id="setNoticeEnabled"><span></span></label>
+          </div>
+          <div class="field"><label>公告内容</label><textarea class="textarea" id="setNoticeText" placeholder="例如：本周六 09:00-12:00 系统升级，部分服务可能延迟"></textarea></div>
           <button class="btn btn-primary" id="saveSettingsBtn" style="margin-top:16px">保存策略</button>
         </div>
         <div class="panel">
