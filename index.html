@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数理天医 · 智能客服 Agent</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="btn btn-icon btn-ghost" id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
+    <div class="brand">
+      <div class="brand-mark">医</div>
+      <div>
+        <div class="brand-name">数理天医 · 智能客服</div>
+        <div class="brand-sub">TIANYI INTELLIGENT SERVICE AGENT</div>
+      </div>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">知识库已就绪</span></div>
+    <a class="btn" href="admin.html" title="进入管理后台">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      管理后台
+    </a>
+    <button class="btn btn-primary" id="newChatBtn">＋ 新建会话</button>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="sidebar-title">对话记录</div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input class="input" id="convSearch" placeholder="搜索历史会话" autocomplete="off">
+      </div>
+    </div>
+    <div class="conv-list" id="convList"></div>
+    <div class="sidebar-foot">
+      <div class="disclaimer-mini">
+        <strong>非诊疗声明</strong>
+        本助手仅提供平台订单、课程、售后与技术支持咨询；内容不构成医疗诊断、治疗或用药建议。身体不适请及时就医。
+      </div>
+    </div>
+  </aside>
+
+  <main class="chat-main">
+    <div class="chat-head">
+      <div>
+        <h2 id="chatTitle">新的咨询</h2>
+        <div class="ch-sub" id="chatSub">多轮对话 · 知识库检索 · 意图识别 · 自动转人工</div>
+      </div>
+      <div class="spacer"></div>
+      <span class="tag" id="chatIntent"><span class="tag-dot"></span>待识别</span>
+      <button class="btn btn-sm" id="handoffBtn" title="转接人工客服">🙋 转人工</button>
+    </div>
+
+    <div class="msg-list" id="msgList">
+      <div class="msg-list-inner" id="msgListInner"></div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div class="composer">
+          <button class="btn btn-ghost btn-icon" id="humanBtn" title="转人工">🙋</button>
+          <textarea id="msgInput" rows="1" placeholder="请描述您的问题，例如：我的订单还没开通 / 如何申请退款…" autocomplete="off"></textarea>
+          <div class="composer-actions">
+            <button class="btn btn-ghost btn-icon hidden" id="stopBtn" title="停止生成">■</button>
+            <button class="send-btn" id="sendBtn" title="发送">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="composer-foot" id="composerFoot">按 Enter 发送，Shift + Enter 换行 · 回答由知识库与大模型辅助生成，请以平台实际规则为准</div>
+    </div>
+  </main>
+
+  <aside class="aside">
+    <div class="aside-section">
+      <h4>本次会话</h4>
+      <div class="info-card">
+        <div class="info-row"><span>识别意图</span><span id="infoIntent">—</span></div>
+        <div class="info-row"><span>会话状态</span><span id="infoStatus">进行中</span></div>
+        <div class="info-row"><span>消息数量</span><span id="infoMsgs">0</span></div>
+        <div class="info-row"><span>知识库命中</span><span id="infoFaq">0 条</span></div>
+        <div class="info-row"><span>满意度</span><span id="infoRating">未评价</span></div>
+      </div>
+    </div>
+    <div class="aside-section">
+      <h4>推荐知识</h4>
+      <ul class="faq-suggest" id="suggestList"></ul>
+    </div>
+    <div class="aside-section">
+      <h4>服务说明</h4>
+      <div class="notice-card" id="engineNotice">
+        当前为<strong>本地知识库模式</strong>：回答基于内置 FAQ 检索与规则引擎生成。可在管理后台的「模型接入」中启用大模型，获得更自然的语义理解与多轮推理。
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div id="toastHost"></div>
+
+<script src="assets/core.js"></script>
+<script src="assets/chat.js"></script>
+</body>
+</html>
