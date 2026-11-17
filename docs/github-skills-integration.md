@@ -65,6 +65,18 @@
 ## 7. 局限与诚实说明
 
 - 未引入任何第三方 skill 的可执行代码，仅实现其公开的方法论（避免 supply-chain 风险；样本中 54% 为 critical/offensive）。
-- `runRegressionSuite()` 使用规则的 `simulate()` 作为被测对象，不调用真实 LLM；若要评测 LLM 输出质量，需配置 API Key 后将 verifier 换成 LLM-as-Judge。
+- ~~`runRegressionSuite()` 使用规则的 `simulate()` 作为被测对象，不调用真实 LLM~~ → **第六轮已落地 `runLlmRegression()`**：真实生成回答 + LLM-as-Judge 评分 + 自增强偏见标注（详见 gap-analysis 第 11 章）。规则版 `runRegressionSuite()` 保留，作为无需 API Key 的快速回归。
 - Wilson 区间表述的是「同一任务分布下重复抽样」的统计不确定性，重复跑同一用例不构成独立样本。
 - 访客记忆为本地派生视图（不新增存储集合），跨设备同步依赖已有的 Supabase 可选同步。
+- 第六轮新增局限：评分卡为通用客服质量卡（未叠加中医合规专用 rubric）；用量台账目前覆盖评测/评审调用，访客流式对话暂未入账。
+
+## 8. 第六轮：从方法论到端到端（2026-11-17 追加）
+
+第五轮的 `runRegressionSuite` 只测规则引擎。第六轮在「Skill 实验室」新增 **LLM 真实评测**：
+
+1. 每条用例：`retrieveFaq` 上下文 + `buildSystemPrompt` → `llmChat` 真实生成（temperature 0.6）；
+2. `llmJudge` 按 rubric-v1 评分卡评审（温度 0，输出四维度分 + issues）；
+3. 偏见防护落地：评审模型可配置为与生成模型不同（`judge.model`），同模型自评自动标 `selfJudged` 局限徽章；
+4. 每次调用的 usage（或字数估算）写入 30 天滚动用量台账，按可配置单价折算成本、按单日预算告警。
+
+同时落地 **知识缺口闭环**：`knowledgeGaps` → `createFaqDrafts`（去重）→ 后台审核入库 / 忽略 → 入库条目带 `gap-draft` 来源。
