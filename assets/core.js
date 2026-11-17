@@ -1,0 +1,546 @@
+/* 数理天医 · 智能客服 Agent
+ * core.js — 本地持久化数据层 + FAQ 检索 / 意图识别 / 大模型接入引擎
+ * 说明：云服务开通被拒绝，本版本按平台指示使用浏览器本地存储；
+ *      大模型为「可选 OpenAI 兼容接口」，密钥仅保存在当前浏览器，不写入源码。
+ */
+(function (global) {
+  'use strict';
+
+  var STORAGE_KEY = 'tianyi_agent_state_v1';
+
+  var INTENTS = {
+    refund: { key: 'refund', label: '退款退费', color: '#b4453c', icon: '退' },
+    order: { key: 'order', label: '查询订单', color: '#b07a2a', icon: '单' },
+    tech: { key: 'tech', label: '技术支持', color: '#2f6b5f', icon: '技' },
+    product: { key: 'product', label: '产品咨询', color: '#5b5f9e', icon: '产' },
+    health: { key: 'health', label: '健康合规', color: '#7a6a55', icon: '健' },
+    human: { key: 'human', label: '转人工', color: '#8d4b7b', icon: '人' },
+    other: { key: 'other', label: '其他咨询', color: '#6b7280', icon: '他' }
+  };
+
+  var FAQ_CATEGORIES = ['订单与支付', '退款与售后', '技术支持', '产品与服务', '健康与合规', '人工服务'];
+
+  var SEED_FAQS = [
+    { category: '订单与支付', intent: 'order', question: '如何查询我的订单状态？', answer: '登录后进入「我的 → 我的订单」，可查看全部订单及状态（待支付 / 已开通 / 已退款）。如使用手机号下单，请用下单时的手机号登录；订单状态一般在支付成功后 5 分钟内更新。', keywords: ['订单', '查询订单', '订单状态', '我的订单', '订单号', '查单'] },
+    { category: '订单与支付', intent: 'order', question: '支付成功但课程/报告未开通怎么办？', answer: '支付通道回调偶尔存在 1-5 分钟延迟。请先刷新「我的订单」；超过 10 分钟仍未开通，请提供订单号与支付时间，我们将为您人工核验并补开。', keywords: ['支付成功', '未开通', '没开通', '回调', '延迟', '补开'] },
+    { category: '订单与支付', intent: 'order', question: '支付失败或重复扣款如何处理？', answer: '支付失败一般不会扣款；若银行已扣款但订单显示未支付，款项通常会在 1-3 个工作日原路退回。重复扣款请提供两笔交易的订单号，我们核实后发起退款。', keywords: ['支付失败', '重复扣款', '扣款', '未支付', '原路退回'] },
+    { category: '订单与支付', intent: 'order', question: '可以开发票吗？', answer: '支持开具电子普通发票。请在订单完成后 30 天内，于「我的 → 发票管理」提交抬头与税号，或联系人工客服提供订单号，约 3 个工作日发送至预留邮箱。', keywords: ['发票', '开票', '税号', '抬头', '电子发票'] },
+    { category: '订单与支付', intent: 'order', question: '优惠券和会员折扣怎么使用？', answer: '优惠券在结算页自动匹配可用券，也可手动选择；会员折扣与优惠券通常不可叠加，以结算页实付金额为准。已过期优惠券无法补发。', keywords: ['优惠券', '折扣', '会员', '结算', '叠加'] },
+    { category: '订单与支付', intent: 'order', question: '订单号在哪里看？', answer: '订单号是 16 位数字，可在「我的订单」详情页查看，也包含在支付成功短信与确认邮件中。向客服咨询时提供订单号可以显著加快处理速度。', keywords: ['订单号', '单号', '16位', '短信', '确认邮件'] },
+
+    { category: '退款与售后', intent: 'refund', question: '如何申请退款？', answer: '进入「我的 → 我的订单」，选择对应订单点击「申请退款」，填写原因并提交。虚拟课程/报告类商品在未开始学习且购买未超过 7 天时支持无理由退款，审核通常在 1-2 个工作日内完成。', keywords: ['退款', '申请退款', '怎么退', '退费', '退钱'] },
+    { category: '退款与售后', intent: 'refund', question: '退款多久能到账？', answer: '审核通过后，退款按原支付渠道退回：微信/支付宝一般 1-3 个工作日，银行卡 3-7 个工作日。到账时间以支付机构为准，可在「退款记录」中查看进度。', keywords: ['退款到账', '多久到账', '几天', '退款进度', '原路退回'] },
+    { category: '退款与售后', intent: 'refund', question: '已经学过一部分课程还能退款吗？', answer: '已学习超过 20% 或已下载完整报告的订单，原则上不支持无理由退款；如因平台技术故障导致无法正常使用，可提交订单号与问题截图申请特殊处理，由人工客服审核。', keywords: ['学了一部分', '已学习', '部分退款', '不支持退款', '特殊处理'] },
+    { category: '退款与售后', intent: 'refund', question: '退款申请被驳回怎么办？', answer: '驳回页面会展示具体原因（如超出期限、已核销等）。若您认为判断有误，可回复「转人工」并附上订单号，人工客服将在服务时间内复核。', keywords: ['驳回', '退款失败', '不给退', '复核', '申诉'] },
+    { category: '退款与售后', intent: 'refund', question: '七天无理由退款规则是什么？', answer: '自支付成功之日起 7 天内、且课程未开始学习 / 报告未生成，可申请全额无理由退款；生成报告或开课后按平台服务协议处理。活动特价商品以商品页标注的售后规则为准。', keywords: ['七天', '7天', '无理由', '全额退款', '售后规则'] },
+    { category: '退款与售后', intent: 'refund', question: '退款后会员权益还在吗？', answer: '订单全额退款成功后，该订单对应的会员权益与课程访问权限同步关闭；账户中其他有效订单不受影响。', keywords: ['退款后', '会员权益', '权限关闭', '访问'] },
+
+    { category: '技术支持', intent: 'tech', question: '登录不了 / 验证码收不到怎么办？', answer: '请先确认手机号无误、短信未被拦截，并尝试 60 秒后重新获取。若仍收不到，可切换「邮箱验证码」登录，或清除浏览器缓存后重试；连续失败 5 次会临时锁定 30 分钟。', keywords: ['登录不了', '验证码', '收不到', '登录失败', '短信', '锁定'] },
+    { category: '技术支持', intent: 'tech', question: '数理体质报告打不开或一直加载中？', answer: '建议使用 Chrome / Edge 最新版本，关闭广告拦截插件后刷新；报告为 PDF，需允许弹窗与下载。若仍无法打开，请提供订单号、浏览器版本与错误截图，技术同事会协助排查。', keywords: ['报告打不开', '加载中', '打不开', 'PDF', '浏览器', '白屏', '闪退'] },
+    { category: '技术支持', intent: 'tech', question: '页面报错、空白或小程序闪退', answer: '常见原因是本地缓存过期。请尝试：退出重新登录 → 清除缓存 → 更新到最新版本。若问题持续，请记录报错提示文字与发生时间，转人工后我们会生成技术工单。', keywords: ['报错', '空白', '闪退', '崩溃', '缓存', 'bug', '错误'] },
+    { category: '技术支持', intent: 'tech', question: '数据不同步 / 换了设备看不到记录', answer: '请使用与下单时相同的手机号或邮箱登录，记录与账号绑定。若确认账号一致仍缺失，请提供账号与最近一次操作时间，我们协助核对数据。', keywords: ['数据同步', '不同步', '换设备', '记录丢失', '账号'] },
+    { category: '技术支持', intent: 'tech', question: '如何修改绑定手机号或密码？', answer: '进入「我的 → 账号与安全」，通过原手机号验证后可更换绑定；密码修改同样需要先完成身份验证。原手机号已停用时，请转人工提交身份核验。', keywords: ['修改手机号', '换绑', '改密码', '账号安全', '身份验证'] },
+    { category: '技术支持', intent: 'tech', question: '报告支持导出或打印吗？', answer: '支持。在报告详情页点击「导出 PDF」即可保存；打印时建议选择 A4 纵向、背景图形开启。导出功能需要浏览器允许下载。', keywords: ['导出', '打印', 'PDF', '下载', '保存'] },
+
+    { category: '产品与服务', intent: 'product', question: '什么是「数理天医」体质分析报告？', answer: '「数理天医」是基于中医经典理论与现代数据建模，对用户填写的体质问卷进行结构化归纳，输出的一份生活方式参考报告，包含体质倾向、四时调养建议与作息提示。它是健康科普与自我管理工具，不是医学诊断书。', keywords: ['数理天医', '体质报告', '是什么', '报告内容', '介绍'] },
+    { category: '产品与服务', intent: 'product', question: '课程有效期是多久？可以反复看吗？', answer: '单门课程自开通之日起有效期 12 个月，有效期内可无限次回放；会员有效期内可学习会员专区全部课程。到期前 30 天会在站内消息提醒。', keywords: ['有效期', '课程', '回放', '到期', '会员专区'] },
+    { category: '产品与服务', intent: 'product', question: '会员包含哪些权益？', answer: '会员权益包含：会员专区课程、每月一次体质复测、报告解读直播回放、专属学习社群。具体权益以购买页公示为准，平台可能随版本更新调整并提前公告。', keywords: ['会员', '权益', '复测', '社群', '直播'] },
+    { category: '产品与服务', intent: 'product', question: '如何预约一对一咨询？', answer: '在「服务 → 预约咨询」选择时段并支付后，顾问会在服务时间前 1 小时通过站内消息发送接入方式。如需改期，请至少提前 4 小时在原预约页操作。', keywords: ['预约', '一对一', '咨询', '改期', '时段'] },
+    { category: '产品与服务', intent: 'product', question: '课程有结业证书吗？', answer: '完成指定课程全部章节并通过在线测评后，可在「我的 → 证书」查看电子结业证书。该证书为学习完成证明，不属于职业资格或执业资质认证。', keywords: ['证书', '结业', '测评', '资格', '认证'] },
+
+    { category: '健康与合规', intent: 'health', question: '平台报告能当作诊断或治疗依据吗？', answer: '不能。平台所有报告、课程与内容均属于健康科普与生活方式参考，不构成医疗诊断、治疗方案或用药建议，也不能替代执业医师的面诊。如有不适或疾病相关问题，请及时前往正规医疗机构就诊。', keywords: ['诊断', '治疗', '看病', '用药', '医疗', '医生', '能不能治'] },
+    { category: '健康与合规', intent: 'health', question: '智能客服会给出调理药方吗？', answer: '不会。智能客服仅回答平台订单、课程、售后与技术支持相关问题，不提供辨证处方、用药剂量或疗效承诺。涉及个体健康的问题我们会转接人工顾问，并建议您咨询具备资质的医师。', keywords: ['药方', '方子', '调理', '处方', '吃什么药', '疗效'] },
+    { category: '健康与合规', intent: 'health', question: '我的问卷和体质数据如何保护？', answer: '问卷数据仅用于生成您本人的报告，不会对外出售；您可在「账号与安全」中申请导出或删除个人数据。请勿在对话中发送身份证号、银行卡号等敏感信息。', keywords: ['隐私', '数据保护', '个人信息', '删除数据', '安全'] },
+
+    { category: '人工服务', intent: 'human', question: '人工客服的服务时间？', answer: '人工客服服务时间为每日 09:00 - 21:00。非服务时间提交的转人工请求会生成工单，工作人员将在次日服务时间优先处理，并通过站内消息回复。', keywords: ['人工', '客服', '服务时间', '几点', '上班'] },
+    { category: '人工服务', intent: 'human', question: '如何转接人工客服？', answer: '直接发送「转人工」，或点击输入框左侧的「转人工」按钮即可。系统会把本次对话摘要与意图一并生成工单，无需重复描述问题。', keywords: ['转人工', '人工客服', '真人', '找客服', '投诉'] }
+  ];
+
+  var DEFAULT_SETTINGS = {
+    botName: '天医小助手',
+    welcome: '您好，我是天医小助手。关于订单、退款、课程、报告或技术问题都可以问我；我会先检索知识库，必要时为您转接人工。',
+    autoHandoff: true,
+    handoffThreshold: 2,
+    faqThreshold: 2.2,
+    llm: {
+      enabled: false,
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',
+      apiKey: ''
+    }
+  };
+
+  var LLM_PRESETS = [
+    { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+    { name: 'Moonshot / Kimi', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+    { name: 'OpenAI 兼容', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    { name: '自定义兼容接口', baseUrl: '', model: '' }
+  ];
+
+  /* ---------------- utils ---------------- */
+  function uid(prefix) {
+    return (prefix || 'id') + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+  }
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function formatTime(ts) {
+    var d = new Date(ts);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function formatDate(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  function formatDateTime(ts) {
+    var d = new Date(ts);
+    return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function relativeTime(ts) {
+    var diff = Date.now() - ts;
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';
+    if (diff < 604800000) return Math.floor(diff / 86400000) + ' 天前';
+    return formatDate(ts);
+  }
+  function toast(message, kind) {
+    var host = document.getElementById('toastHost');
+    if (!host) return;
+    var el = document.createElement('div');
+    el.className = 'toast ' + (kind || 'info');
+    el.textContent = message;
+    host.appendChild(el);
+    setTimeout(function () { el.classList.add('out'); setTimeout(function () { el.remove(); }, 260); }, 2800);
+  }
+  function downloadJson(filename, data) {
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  /* ---------------- state ---------------- */
+  function initialState() {
+    var t = Date.now();
+    return {
+      version: 1,
+      createdAt: t,
+      conversations: [],
+      faqs: SEED_FAQS.map(function (f, i) {
+        return {
+          id: 'faq_' + (i + 1), category: f.category, intent: f.intent,
+          question: f.question, answer: f.answer, keywords: f.keywords.slice(),
+          hits: 0, enabled: true, updatedAt: t
+        };
+      }),
+      handoffs: [],
+      settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
+    };
+  }
+
+  var S = null;
+
+  function load() {
+    if (S) return S;
+    try {
+      var raw = global.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.conversations) && Array.isArray(parsed.faqs)) {
+          S = parsed;
+          S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
+          S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (parsed.settings && parsed.settings.llm) || {});
+          S.handoffs = parsed.handoffs || [];
+          return S;
+        }
+      }
+    } catch (e) { /* corrupted state -> rebuild */ }
+    S = initialState();
+    save();
+    return S;
+  }
+  function save() {
+    try { global.localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); }
+    catch (e) { toast('本地存储空间不足，建议导出数据后清理旧会话', 'warn'); }
+    return S;
+  }
+
+  var Store = {
+    state: load,
+    save: save,
+    reset: function () { S = initialState(); save(); return S; },
+    resetFaqs: function () {
+      return Store.mutate(function (s) {
+        s.faqs = initialState().faqs;
+        return s.faqs;
+      });
+    },
+    importData: function (obj) {
+      if (!obj || !Array.isArray(obj.conversations) || !Array.isArray(obj.faqs)) throw new Error('数据格式不正确');
+      S = obj;
+      S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), obj.settings || {});
+      S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (obj.settings && obj.settings.llm) || {});
+      S.handoffs = obj.handoffs || [];
+      save(); return S;
+    },
+    mutate: function (fn) { var s = load(); var r = fn(s); save(); return r; },
+    newConversation: function (firstText) {
+      return Store.mutate(function (s) {
+        var c = {
+          id: uid('conv'), title: (firstText || '新的咨询').slice(0, 20),
+          createdAt: Date.now(), updatedAt: Date.now(),
+          status: 'active', intent: 'other', messages: [],
+          rating: null, unresolvedTurns: 0, channel: 'web'
+        };
+        s.conversations.unshift(c);
+        return c;
+      });
+    },
+    getConversation: function (id) {
+      return load().conversations.filter(function (c) { return c.id === id; })[0] || null;
+    },
+    addMessage: function (convId, msg) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        var m = Object.assign({ id: uid('msg'), ts: Date.now() }, msg);
+        c.messages.push(m);
+        c.updatedAt = Date.now();
+        if (msg.role === 'user' && c.messages.filter(function (x) { return x.role === 'user'; }).length === 1) {
+          c.title = String(msg.content || '新的咨询').slice(0, 20);
+        }
+        return m;
+      });
+    },
+    updateMessage: function (convId, msgId, patch) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        var m = c.messages.filter(function (x) { return x.id === msgId; })[0];
+        if (m) Object.assign(m, patch);
+        return m;
+      });
+    },
+    updateConversation: function (id, patch) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === id; })[0];
+        if (c) { Object.assign(c, patch); c.updatedAt = Date.now(); }
+        return c;
+      });
+    },
+    deleteConversation: function (id) {
+      return Store.mutate(function (s) {
+        s.conversations = s.conversations.filter(function (c) { return c.id !== id; });
+        s.handoffs = s.handoffs.filter(function (h) { return h.conversationId !== id; });
+        return true;
+      });
+    },
+    setRating: function (convId, score, comment) {
+      return Store.updateConversation(convId, { rating: { score: score, comment: comment || '', ts: Date.now() } });
+    },
+    addHandoff: function (convId, reason, intent) {
+      return Store.mutate(function (s) {
+        var pending = s.handoffs.filter(function (h) { return h.conversationId === convId && h.status === 'pending'; })[0];
+        if (pending) return pending;
+        var h = {
+          id: uid('hd'), conversationId: convId, reason: reason, intent: intent || 'other',
+          status: 'pending', createdAt: Date.now(), resolvedAt: null, note: ''
+        };
+        s.handoffs.unshift(h);
+        return h;
+      });
+    },
+    resolveHandoff: function (id, note) {
+      return Store.mutate(function (s) {
+        var h = s.handoffs.filter(function (x) { return x.id === id; })[0];
+        if (h) { h.status = 'resolved'; h.resolvedAt = Date.now(); h.note = note || ''; }
+        var conv = h && s.conversations.filter(function (c) { return c.id === h.conversationId; })[0];
+        if (conv) conv.status = 'resolved';
+        return h;
+      });
+    },
+    upsertFaq: function (faq) {
+      return Store.mutate(function (s) {
+        if (faq.id) {
+          var f = s.faqs.filter(function (x) { return x.id === faq.id; })[0];
+          if (f) { Object.assign(f, faq, { updatedAt: Date.now() }); return f; }
+        }
+        var n = Object.assign({ id: uid('faq'), hits: 0, enabled: true, updatedAt: Date.now(), keywords: [] }, faq);
+        s.faqs.push(n); return n;
+      });
+    },
+    deleteFaq: function (id) {
+      return Store.mutate(function (s) { s.faqs = s.faqs.filter(function (f) { return f.id !== id; }); return true; });
+    },
+    bumpFaqHits: function (ids) {
+      if (!ids || !ids.length) return;
+      Store.mutate(function (s) {
+        ids.forEach(function (id) {
+          var f = s.faqs.filter(function (x) { return x.id === id; })[0];
+          if (f) f.hits = (f.hits || 0) + 1;
+        });
+      });
+    },
+    updateSettings: function (patch) {
+      return Store.mutate(function (s) { Object.assign(s.settings, patch); return s.settings; });
+    },
+    updateLlm: function (patch) {
+      return Store.mutate(function (s) { Object.assign(s.settings.llm, patch); return s.settings.llm; });
+    },
+    stats: function () {
+      var s = load();
+      var convs = s.conversations;
+      var ratings = convs.filter(function (c) { return c.rating; });
+      var avg = ratings.length ? ratings.reduce(function (a, c) { return a + c.rating.score; }, 0) / ratings.length : 0;
+      var satisfied = ratings.filter(function (c) { return c.rating.score >= 4; }).length;
+      var intentCount = {};
+      var statusCount = { active: 0, waiting_human: 0, resolved: 0 };
+      var msgCount = 0;
+      convs.forEach(function (c) {
+        intentCount[c.intent || 'other'] = (intentCount[c.intent || 'other'] || 0) + 1;
+        statusCount[c.status] = (statusCount[c.status] || 0) + 1;
+        msgCount += (c.messages || []).length;
+      });
+      var dist = [0, 0, 0, 0, 0];
+      ratings.forEach(function (c) { dist[c.rating.score - 1]++; });
+      var trend = [];
+      for (var i = 6; i >= 0; i--) {
+        var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+        var start = d.getTime(), end = start + 86400000;
+        var dayConvs = convs.filter(function (c) { return c.createdAt >= start && c.createdAt < end; });
+        var dayRatings = dayConvs.filter(function (c) { return c.rating; });
+        trend.push({
+          date: formatDate(start),
+          label: pad(d.getMonth() + 1) + '/' + pad(d.getDate()),
+          conversations: dayConvs.length,
+          avg: dayRatings.length ? dayRatings.reduce(function (a, c) { return a + c.rating.score; }, 0) / dayRatings.length : 0
+        });
+      }
+      var pending = s.handoffs.filter(function (h) { return h.status === 'pending'; }).length;
+      return {
+        totalConversations: convs.length,
+        totalMessages: msgCount,
+        totalFaqs: s.faqs.filter(function (f) { return f.enabled; }).length,
+        avgRating: avg,
+        ratingCount: ratings.length,
+        satisfactionRate: ratings.length ? satisfied / ratings.length : 0,
+        dist: dist,
+        intentCount: intentCount,
+        statusCount: statusCount,
+        pendingHandoffs: pending,
+        totalHandoffs: s.handoffs.length,
+        handoffRate: convs.length ? s.handoffs.length / convs.length : 0,
+        resolvedRate: convs.length ? (statusCount.resolved / convs.length) : 0,
+        topFaqs: s.faqs.slice().sort(function (a, b) { return (b.hits || 0) - (a.hits || 0); }).slice(0, 5),
+        trend: trend
+      };
+    }
+  };
+
+  /* ---------------- intent engine ---------------- */
+  var INTENT_RULES = {
+    human: { strong: ['转人工', '人工客服', '真人', '找客服', '人工服务', '要投诉', '投诉'], weak: ['人工', '客服'] },
+    refund: { strong: ['退款', '退费', '退钱', '申请退', '退货', '退还', '无理由'], weak: ['退回', '到账', '驳回', '扣款'] },
+    order: { strong: ['订单', '查单', '订单号', '下单', '支付', '发票', '优惠券', '物流', '发货'], weak: ['买了', '购买', '付款', '价格', '多少钱'] },
+    tech: { strong: ['报错', '打不开', '闪退', '登录不了', '验证码', '白屏', '加载中', 'bug', '故障', '导出不了', '不同步', '崩溃'], weak: ['密码', '缓存', '浏览器', '账号', '同步', '卡顿'] },
+    health: { strong: ['诊断', '治疗', '药方', '处方', '吃什么药', '能不能治', '看病', '疗效', '医师'], weak: ['调理', '体质', '养生', '症状', '不舒服'] },
+    product: { strong: ['课程', '会员', '报告', '预约', '证书', '权益', '有效期', '数理天医', '体质分析'], weak: ['是什么', '介绍', '怎么学', '内容'] }
+  };
+
+  function normalize(text) {
+    return String(text || '').toLowerCase().replace(/[\s\u3000]/g, '')
+      .replace(/[，。！？、；：""''（）()【】\[\].,!?;:~～\-—_/\\]/g, '');
+  }
+
+  function detectIntent(text) {
+    var raw = String(text || '');
+    var n = normalize(raw);
+    var scores = {};
+    var signals = {};
+    Object.keys(INTENT_RULES).forEach(function (key) {
+      var s = 0; var hit = [];
+      INTENT_RULES[key].strong.forEach(function (w) { if (n.indexOf(normalize(w)) >= 0) { s += 3; hit.push(w); } });
+      INTENT_RULES[key].weak.forEach(function (w) { if (n.indexOf(normalize(w)) >= 0) { s += 1; hit.push(w); } });
+      scores[key] = s; signals[key] = hit;
+    });
+    if (/\d{10,}/.test(raw)) { scores.order += 3; signals.order.push('订单号'); }
+    if (/退款|退货|退费/.test(raw) && /订单|课程|报告/.test(raw)) scores.refund += 1;
+    var best = 'other', bestScore = 0;
+    Object.keys(scores).forEach(function (k) { if (scores[k] > bestScore) { bestScore = scores[k]; best = k; } });
+    if (bestScore === 0) return { key: 'other', label: INTENTS.other.label, confidence: 0.2, signals: [], scores: scores };
+    var confidence = clamp(0.42 + bestScore * 0.13, 0.42, 0.97);
+    return { key: best, label: INTENTS[best].label, confidence: confidence, signals: signals[best], scores: scores };
+  }
+
+  /* ---------------- FAQ retrieval ---------------- */
+  function grams(text, n) {
+    var s = normalize(text), out = [], seen = {};
+    for (var i = 0; i <= s.length - n; i++) {
+      var g = s.slice(i, i + n);
+      if (!seen[g]) { seen[g] = 1; out.push(g); }
+    }
+    return out;
+  }
+
+  function retrieveFaq(query, intentKey, limit) {
+    var s = load();
+    var pool = s.faqs.filter(function (f) { return f.enabled !== false; });
+    var qn = normalize(query);
+    var q2 = grams(query, 2);
+    var q3 = grams(query, 3);
+    var results = pool.map(function (f) {
+      var hay = normalize(f.question + ' ' + f.answer + ' ' + (f.keywords || []).join(' ') + ' ' + f.category);
+      var matched2 = q2.filter(function (g) { return hay.indexOf(g) >= 0; }).length;
+      var matched3 = q3.filter(function (g) { return hay.indexOf(g) >= 0; }).length;
+      var ratio2 = q2.length ? matched2 / q2.length : 0;
+      var ratio3 = q3.length ? matched3 / q3.length : 0;
+      var kwBonus = 0;
+      (f.keywords || []).forEach(function (k) {
+        var kn = normalize(k);
+        if (!kn) return;
+        if (qn.indexOf(kn) >= 0) kwBonus += 2.4;
+        else if (kn.length >= 2 && hay.indexOf(kn) >= 0 && qn.length >= 2 && kn.indexOf(qn) >= 0) kwBonus += 1.2;
+      });
+      var exact = normalize(f.question) === qn ? 4 : 0;
+      var intentBonus = (intentKey && f.intent === intentKey) ? 0.9 : 0;
+      var score = ratio2 * 5 + ratio3 * 2 + kwBonus + exact + intentBonus;
+      return { faq: f, score: Math.round(score * 100) / 100, ratio: ratio2 };
+    });
+    results.sort(function (a, b) { return b.score - a.score; });
+    var threshold = s.settings.faqThreshold || 2.2;
+    var top = results.slice(0, limit || 3);
+    return {
+      hits: top.filter(function (r) { return r.score >= threshold; }),
+      top: top,
+      bestScore: results.length ? results[0].score : 0,
+      confident: results.length > 0 && results[0].score >= Math.max(threshold, 4)
+    };
+  }
+
+  /* ---------------- LLM (optional, OpenAI-compatible) ---------------- */
+  function llmReady() {
+    var l = load().settings.llm;
+    return !!(l && l.enabled && l.baseUrl && l.model && l.apiKey);
+  }
+
+  function llmStream(messages, onDelta, signal) {
+    var l = load().settings.llm;
+    if (!llmReady()) return Promise.reject(new Error('LLM_NOT_CONFIGURED'));
+    var url = l.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + l.apiKey },
+      body: JSON.stringify({ model: l.model, messages: messages, stream: true, temperature: 0.6 }),
+      signal: signal
+    }).then(function (resp) {
+      if (!resp.ok) {
+        return resp.text().then(function (t) {
+          throw new Error('模型接口返回 ' + resp.status + '：' + t.slice(0, 180));
+        });
+      }
+      if (!resp.body) throw new Error('当前浏览器不支持流式响应');
+      var reader = resp.body.getReader();
+      var decoder = new TextDecoder('utf-8');
+      var buffer = '', full = '';
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return full;
+          buffer += decoder.decode(res.value, { stream: true });
+          var lines = buffer.split(/\r?\n/);
+          buffer = lines.pop();
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line || line.indexOf('data:') !== 0) continue;
+            var data = line.slice(5).trim();
+            if (data === '[DONE]') continue;
+            try {
+              var obj = JSON.parse(data);
+              var delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
+              var piece = delta && delta.content ? delta.content : '';
+              if (piece) { full += piece; if (onDelta) onDelta(piece, full); }
+            } catch (e) { /* ignore keep-alive frames */ }
+          }
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+
+  function classifyWithLlm(text) {
+    if (!llmReady()) return Promise.resolve(null);
+    var sys = '你是意图分类器。把用户消息归入且仅归入以下之一：refund(退款/退费)、order(查询订单/支付/发票)、tech(技术支持/故障)、product(产品与课程咨询)、health(健康医疗相关)、human(明确要求人工)、other(其他)。只返回 JSON：{"intent":"...","confidence":0.0}。';
+    var out = '';
+    return llmStream([
+      { role: 'system', content: sys },
+      { role: 'user', content: String(text).slice(0, 500) }
+    ], function (piece) { out += piece; }).then(function () {
+      var m = out.match(/\{[\s\S]*\}/);
+      if (!m) return null;
+      var obj = JSON.parse(m[0]);
+      if (!INTENTS[obj.intent]) return null;
+      return { key: obj.intent, label: INTENTS[obj.intent].label, confidence: clamp(Number(obj.confidence) || 0.7, 0, 1), source: 'llm' };
+    }).catch(function () { return null; });
+  }
+
+  function buildSystemPrompt(context) {
+    var faqText = (context.hits || []).map(function (h, i) {
+      return '[' + (i + 1) + '] Q: ' + h.faq.question + '\nA: ' + h.faq.answer;
+    }).join('\n\n');
+    return [
+      '你是「数理天医」平台的智能客服「天医小助手」，服务范围是：订单与支付、退款售后、课程与会员、体质报告、技术支持、账号问题。',
+      '回答要求：用简体中文，语气温和专业，分点简洁（一般不超过 180 字）；只依据下面提供的知识库与平台规则作答，不编造订单状态、金额、时效或承诺。',
+      '严禁提供医疗诊断、辨证处方、用药建议或疗效承诺；涉及个体健康问题时说明平台内容仅为健康科普与生活方式参考，建议咨询正规医疗机构的执业医师。',
+      '如果知识库无法覆盖、需要查询具体订单数据、用户表达不满或要求人工，请在回答末尾单独输出标记 [[HANDOFF]]，并简要说明将为其转接人工。不要在其他情况下输出该标记。',
+      '本次识别的用户意图：' + (context.intentLabel || '其他咨询') + '。',
+      '知识库检索结果：\n' + (faqText || '（无匹配条目）')
+    ].join('\n');
+  }
+
+  function buildFallbackAnswer(query, retrieval, intent) {
+    var hits = retrieval.hits;
+    if (!hits.length) {
+      return '抱歉，知识库中暂时没有找到与「' + escapeHtml(String(query).slice(0, 30)) + '」匹配的资料。为避免给出不准确的信息，我为您转接人工客服，请稍候。\n\n[[HANDOFF]]';
+    }
+    var main = hits[0].faq;
+    var parts = ['根据知识库，为您找到以下解答：', '', '**' + main.question + '**', main.answer];
+    var related = hits.slice(1, 3).map(function (h) { return '· ' + h.faq.question; });
+    if (related.length) parts.push('', '您可能还想了解：', related.join('\n'));
+    if (intent && intent.key === 'health') {
+      parts.push('', '温馨提示：以上内容属于健康科普与生活方式参考，不构成医疗诊断或治疗建议；如有身体不适，请及时前往正规医疗机构就诊。');
+    }
+    if (!retrieval.confident) {
+      parts.push('', '如果以上没有解决您的问题，可以回复「转人工」，我会为您生成工单。');
+    }
+    return parts.join('\n');
+  }
+
+  global.TY = {
+    STORAGE_KEY: STORAGE_KEY,
+    INTENTS: INTENTS,
+    FAQ_CATEGORIES: FAQ_CATEGORIES,
+    LLM_PRESETS: LLM_PRESETS,
+    Store: Store,
+    Engine: {
+      detectIntent: detectIntent,
+      retrieveFaq: retrieveFaq,
+      llmReady: llmReady,
+      llmStream: llmStream,
+      classifyWithLlm: classifyWithLlm,
+      buildSystemPrompt: buildSystemPrompt,
+      buildFallbackAnswer: buildFallbackAnswer
+    },
+    utils: {
+      uid: uid, escapeHtml: escapeHtml, pad: pad, formatTime: formatTime,
+      formatDate: formatDate, formatDateTime: formatDateTime, relativeTime: relativeTime,
+      toast: toast, downloadJson: downloadJson, clamp: clamp
+    }
+  };
+})(window);
