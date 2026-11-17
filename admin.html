@@ -19,11 +19,12 @@
       <button class="nav-item" data-page="handoffs"><span class="ni-icon">🙋</span>人工工单<span class="ni-count hidden" id="navHandoffCount">0</span></button>
       <button class="nav-item" data-page="faq"><span class="ni-icon">▣</span>知识库</button>
       <button class="nav-item" data-page="llm"><span class="ni-icon">✦</span>模型接入</button>
+      <button class="nav-item" data-page="cloud"><span class="ni-icon">☁</span>云端同步</button>
       <button class="nav-item" data-page="settings"><span class="ni-icon">⚙</span>系统设置</button>
     </nav>
     <div class="admin-side-foot">
       <a href="index.html">← 返回客服对话页</a><br><br>
-      本地数据版 · 数据存储于当前浏览器
+      本地优先 · 可启用云端同步
     </div>
   </aside>
 
@@ -39,9 +40,8 @@
     </div>
 
     <div class="admin-note">
-      <strong>运行模式说明：</strong>云服务开通确认未通过，当前版本按平台指示采用浏览器本地存储（localStorage）。
-      对话记录、满意度、工单与知识库仅保存在当前浏览器，管理后台看到的是同一浏览器产生的数据；换设备或清除缓存后不会同步。
-      在「模型接入」中可配置 OpenAI 兼容的大模型接口，密钥只保存在本机浏览器。
+      <strong>运行模式说明：</strong>默认使用浏览器本地存储（localStorage），可直接在「云端同步」中配置 Supabase，让数据跨设备存储。
+      「模型接入」支持 OpenAI 兼容的大模型接口。所有密钥只保存在当前浏览器，不会写入源码或同步到云端。
     </div>
 
     <!-- 概览 -->
@@ -154,6 +154,45 @@
           </div>
           <div class="notice-card" style="background:var(--gold-soft);border-color:#ecdfbe;color:#7b6537;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7">
             浏览器直连第三方模型接口可能受对方 CORS 策略限制；若测试连接报网络/CORS 错误，请改用支持跨域的兼容网关，或在正式部署时改用服务端代理。密钥属于敏感信息，请勿在公用电脑上保存。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 云端同步 -->
+    <section class="page hidden" data-page="cloud">
+      <div class="settings-grid">
+        <div class="panel">
+          <h3>云端同步（Supabase）</h3>
+          <div class="panel-sub">配置后，会话、评价、工单与知识库会同步到云端，可在不同设备访问同一份数据</div>
+          <div class="switch-row">
+            <div class="sr-text"><b>启用云端同步</b><small>关闭时仍使用浏览器本地存储</small></div>
+            <label class="switch"><input type="checkbox" id="cloudEnabled"><span></span></label>
+          </div>
+          <div class="field" style="margin-top:14px"><label>Project URL</label><input class="input" id="cloudUrl" placeholder="https://xxxx.supabase.co"></div>
+          <div class="field"><label>anon public key</label><input class="input" id="cloudKey" type="password" placeholder="eyJhbGciOi..." autocomplete="off"><div class="hint">密钥只保存在当前浏览器，不会写入源码，也不会同步到云端。</div></div>
+          <div class="field"><label>数据空间</label><input class="input" id="cloudSpace" placeholder="tianyi-default"><div class="hint">相同空间名的设备共享同一份云端数据；不同空间相互隔离。</div></div>
+          <div class="switch-row">
+            <div class="sr-text"><b>自动同步</b><small>数据变更后 1.5 秒上传，并定时拉取更新</small></div>
+            <label class="switch"><input type="checkbox" id="cloudAuto"><span></span></label>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:9px;margin-top:16px">
+            <button class="btn btn-primary" id="saveCloudBtn">保存配置</button>
+            <button class="btn" id="testCloudBtn">测试连通</button>
+            <button class="btn" id="pushCloudBtn">立即上传</button>
+            <button class="btn" id="pullCloudBtn">立即下载</button>
+          </div>
+          <div id="cloudStatus" style="font-size:12px;margin-top:12px;line-height:1.8"></div>
+        </div>
+        <div class="panel">
+          <h3>一次性建表</h3>
+          <div class="panel-sub">在 Supabase 控制台 → SQL Editor 执行下面语句</div>
+          <textarea class="textarea" id="cloudSql" readonly rows="10" style="font-family:ui-monospace,Consolas,monospace;font-size:11px"></textarea>
+          <div style="display:flex;gap:9px;margin-top:10px">
+            <button class="btn btn-sm" id="copySqlBtn">复制 SQL</button>
+          </div>
+          <div class="notice-card" style="background:var(--gold-soft);border-color:#ecdfbe;color:#7b6537;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7;margin-top:14px">
+            该方案把整份数据作为一个 JSON 记录存入 Supabase，适合中小规模客服数据。示例策略允许持有 anon key 的客户端读写，请勿在公开环境泄露 URL 与 key；生产环境应改为服务端代理与更严格的鉴权。
           </div>
         </div>
       </div>
