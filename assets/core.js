@@ -31,6 +31,7 @@
       'active': '进行中', 'waiting_human': '等待人工', 'resolved': '已解决', 'pending': '待识别',
       'rateQ': '本次回答是否解决您的问题？', 'rateComment': '补充说明（选填）', 'nps': '推荐意愿 0-10（选填）',
       'rateSubmit': '提交评价', 'rated': '✓ 已评价：', 'stars': ' 星', 'sources': '参考知识库',
+      'speakAnswer': '朗读回答', 'inviteRate': '会话已结束，期待您的反馈帮助我们做得更好～',
       'handoffDone': '已为您转接人工客服', 'handoffTip': '　工单已生成，人工客服服务时间 09:00–21:00。您也可以继续补充信息。',
       'placeholder': '请描述您的问题，例如：我的订单还没开通 / 如何申请退款…',
       'composerFoot': '按 Enter 发送，Shift + Enter 换行 · 回答由知识库与大模型辅助生成，请以平台实际规则为准',
@@ -50,6 +51,7 @@
       'active': 'Active', 'waiting_human': 'Waiting for agent', 'resolved': 'Resolved', 'pending': 'Pending',
       'rateQ': 'Did this answer solve your problem?', 'rateComment': 'Additional comment (optional)', 'nps': 'Recommendation 0-10 (optional)',
       'rateSubmit': 'Submit rating', 'rated': '✓ Rated: ', 'stars': ' stars', 'sources': 'FAQ sources',
+      'speakAnswer': 'Read answer aloud', 'inviteRate': 'Session ended — your feedback helps us improve!',
       'handoffDone': 'Transferred to a human agent', 'handoffTip': '  A ticket has been created. Service hours 09:00–21:00. You may add more details.',
       'placeholder': 'Describe your question, e.g. my order is not activated / how to request a refund…',
       'composerFoot': 'Enter to send, Shift + Enter for new line · Answers are generated from the FAQ and AI, please refer to official platform rules',
@@ -152,7 +154,8 @@
       apiKey: '',
       priceIn: 2,      // ¥ / 百万输入 token（按供应商牌价填写，用于用量成本估算）
       priceOut: 8,     // ¥ / 百万输出 token
-      dailyBudget: 0   // 单日预算（¥），0 = 不限额；超出后 Engine.usageSummary 给出告警
+      dailyBudget: 0,  // 单日预算（¥），0 = 不限额；超出后 Engine.usageSummary 给出告警
+      translate: false // 英文界面时用 LLM 实时翻译回答（需已配置 API Key）
     },
     cloud: {
       enabled: false,
@@ -173,8 +176,21 @@
     },
     compliance: {
       enabled: true,
-      terms: ['保证治愈', '根治', '包治', '无副作用', '替代医院', '不用就医', '药到病除', '绝对有效']
+      terms: ['保证治愈', '根治', '包治', '无副作用', '替代医院', '不用就医', '药到病除', '绝对有效'],
+      glossary: []  /* 中医合规术语表：[{term, note}]，供坐席参考与访客科普 */
     },
+    /* A/B 实验：欢迎语变体按权重随机分组，abReport 对比各变体满意度/解决率 */
+    abTest: {
+      enabled: false,
+      variants: [
+        { id: 'A', text: '', weight: 1 },
+        { id: 'B', text: '', weight: 1 }
+      ]
+    },
+    /* 满意度邀请：会话解决后自动弹出评价 */
+    satisfaction: { autoInvite: true },
+    /* 提示词管理：覆盖默认 system prompt（{{intentLabel}}/{{faq}} 占位符） */
+    prompt: { system: '' },
     notice: {
       enabled: false,
       text: ''
@@ -216,6 +232,8 @@
     qa: {
       enabled: true,
       passScore: 3.5,
+      sampleRate: 100,        /* 抽样质检比例（0-100），100 = 全量 */
+      reviewThreshold: 2.5,   /* 低于该分自动进入人工复核队列 */
       dimensions: QA_DIMENSIONS.map(function (d) { return { key: d.key, weight: d.weight, critical: d.critical }; })
     },
     /* 第三轮：WCAG 2.2 无障碍偏好（访客本机保存，可后台设默认） */
@@ -228,7 +246,8 @@
     /* 第三轮：Web Speech 语音输入 */
     voice: {
       enabled: true,
-      lang: 'zh-CN'
+      lang: 'zh-CN',
+      speak: false   /* 语音合成：回答朗读（SpeechSynthesis） */
     },
     /* 第四轮：统一收件箱 —— VIP 优先 / 排队 / 服务时间 */
     inbox: {
@@ -294,7 +313,7 @@
     var s = Object.assign({}, JSON.parse(JSON.stringify(base)), saved || {});
     ['llm', 'cloud', 'sla', 'compliance', 'notice', 'routing', 'proactive',
       'disclosure', 'privacy', 'qa', 'a11y', 'voice', 'inbox', 'autoReply',
-      'search', 'memory', 'judge'].forEach(function (k) {
+      'search', 'memory', 'judge', 'abTest', 'satisfaction', 'prompt'].forEach(function (k) {
       s[k] = Object.assign({}, JSON.parse(JSON.stringify(base[k] || {})), (saved && saved[k]) || {});
     });
     ['canned', 'agents', 'macros', 'templates'].forEach(function (k) {
@@ -1050,6 +1069,7 @@
           tags: [], internalNotes: [], summary: '', nps: null,
           firstResponseAt: null, resolvedAt: null, mood: 3, assignee: '',
           vip: false, queuedAt: null, transfers: [], closedSummary: '',
+          abVariant: abAssignVariant(),
           visitor: Object.assign({ id: 'anon', ua: '', lang: '', ref: '', firstSeen: Date.now() }, meta || {})
         };
         s.conversations.unshift(c);
@@ -1182,22 +1202,116 @@
       });
     },
     resolveHandoff: function (id, note) {
+      return Store.setHandoffStatus(id, 'resolved', note);
+    },
+    /* 工单三态状态机：pending → processing → resolved（支持进度查询） */
+    setHandoffStatus: function (id, status, note) {
       return Store.mutate(function (s) {
         var h = s.handoffs.filter(function (x) { return x.id === id; })[0];
-        if (h) { h.status = 'resolved'; h.resolvedAt = Date.now(); h.note = note || ''; }
-        var conv = h && s.conversations.filter(function (c) { return c.id === h.conversationId; })[0];
-        if (conv) conv.status = 'resolved';
+        if (!h) return null;
+        if (['pending', 'processing', 'resolved'].indexOf(status) < 0) return h;
+        h.status = status;
+        if (status === 'processing') h.acceptedAt = Date.now();
+        if (status === 'resolved') { h.resolvedAt = Date.now(); h.note = note || h.note || ''; }
+        var conv = s.conversations.filter(function (c) { return c.id === h.conversationId; })[0];
+        if (conv) conv.status = status === 'resolved' ? 'resolved' : (status === 'processing' ? 'active' : conv.status);
+        audit('handoff.status', h.id + ' → ' + status);
         return h;
       });
+    },
+    /* 工单进度查询（按工单号或会话 id，供访客自助查询） */
+    handoffStatus: function (ref) {
+      var s = load();
+      var r = String(ref || '').trim().toLowerCase();
+      if (!r) return null;
+      var h = s.handoffs.filter(function (x) { return x.id.toLowerCase() === r || x.conversationId.toLowerCase() === r; })[0];
+      return h || null;
+    },
+    /* 技能路由：把等待人工且未分配的会话按意图匹配坐席技能，返回分配数 */
+    autoRouteUnassigned: function () {
+      return Store.mutate(function (s) {
+        var count = 0;
+        var load_ = {};
+        s.conversations.forEach(function (x) {
+          if (x.assignee && x.status !== 'resolved') load_[x.assignee] = (load_[x.assignee] || 0) + 1;
+        });
+        s.conversations.forEach(function (c) {
+          if (c.status !== 'waiting_human' || c.assignee) return;
+          /* 会话意图缺失时回退到最近一次转人工工单的意图 */
+          var intent = c.intent && c.intent !== 'other' ? c.intent : null;
+          if (!intent) {
+            var h = (s.handoffs || []).filter(function (x) { return x.conversationId === c.id; })[0];
+            intent = h && h.intent ? h.intent : 'other';
+          }
+          var candidates = s.settings.agents.filter(function (a) { return (a.skills || []).indexOf(intent) >= 0; });
+          if (!candidates.length) candidates = s.settings.agents;
+          if (!candidates.length) return;
+          /* 就绪坐席中选当前负荷最低的 */
+          candidates.sort(function (a, b) { return (load_[a.id] || 0) - (load_[b.id] || 0); });
+          c.assignee = candidates[0].id;
+          load_[c.assignee] = (load_[c.assignee] || 0) + 1;
+          count++;
+        });
+        if (count) audit('routing.auto', '技能路由自动分配 ' + count + ' 条会话');
+        return count;
+      });
+    },
+    /* 抽样质检：确定性抽样（id 哈希 % 100 < sampleRate），同批数据抽样结果稳定 */
+    qaSampleIds: function () {
+      var s = load();
+      var rate = clamp(Number((s.settings.qa || {}).sampleRate), 0, 100);
+      if (rate >= 100) return s.conversations.map(function (c) { return c.id; });
+      if (rate <= 0) return [];
+      return s.conversations.filter(function (c) {
+        var h = 0, str = c.id;
+        for (var i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) >>> 0; }
+        return (h % 100) < rate;
+      }).map(function (c) { return c.id; });
+    },
+    /* 人工复核队列：抽样集合内质检分低于阈值的会话 */
+    reviewQueue: function () {
+      var s = load();
+      var ids = Store.qaSampleIds();
+      var th = Number((s.settings.qa || {}).reviewThreshold) || 2.5;
+      return ids.map(function (id) {
+        var sc = scoreConversation(id);
+        if (!sc || sc.score >= th) return null;
+        var c = s.conversations.filter(function (x) { return x.id === id; })[0];
+        return { convId: id, score: sc.score, critical: sc.failedCritical || [], title: c ? c.title : '' };
+      }).filter(Boolean);
     },
     upsertFaq: function (faq) {
       return Store.mutate(function (s) {
         if (faq.id) {
           var f = s.faqs.filter(function (x) { return x.id === faq.id; })[0];
-          if (f) { Object.assign(f, faq, { updatedAt: Date.now() }); return f; }
+          if (f) {
+            /* 版本管理：内容变更时保留最近 5 条历史 */
+            if (f.answer !== faq.answer || f.question !== faq.question) {
+              if (!Array.isArray(f.revisions)) f.revisions = [];
+              f.revisions.unshift({ ts: Date.now(), question: f.question, answer: f.answer });
+              f.revisions = f.revisions.slice(0, 5);
+            }
+            Object.assign(f, faq, { updatedAt: Date.now() });
+            return f;
+          }
         }
-        var n = Object.assign({ id: uid('faq'), hits: 0, enabled: true, updatedAt: Date.now(), keywords: [] }, faq);
+        var n = Object.assign({ id: uid('faq'), hits: 0, enabled: true, updatedAt: Date.now(), keywords: [], revisions: [] }, faq);
         s.faqs.push(n); return n;
+      });
+    },
+    revertFaq: function (id, ts) {
+      return Store.mutate(function (s) {
+        var f = s.faqs.filter(function (x) { return x.id === id; })[0];
+        if (!f || !Array.isArray(f.revisions)) return false;
+        var idx = typeof ts === 'number' ? f.revisions.findIndex(function (r) { return r.ts === ts; }) : 0;
+        if (idx < 0) return false;
+        var r = f.revisions[idx];
+        /* 当前内容进历史，再回退到选中版本 */
+        f.revisions.unshift({ ts: Date.now(), question: f.question, answer: f.answer });
+        f.revisions = f.revisions.slice(0, 5);
+        f.question = r.question; f.answer = r.answer; f.updatedAt = Date.now();
+        audit('faq.revert', f.question + ' 回退到 ' + formatDateTime(r.ts));
+        return true;
       });
     },
     deleteFaq: function (id) {
@@ -1677,9 +1791,16 @@
   }
 
   function buildSystemPrompt(context) {
+    /* 提示词管理：后台可自定义 system 模板，占位符 {{intentLabel}} / {{faq}} */
+    var cfg = load().settings.prompt || DEFAULT_SETTINGS.prompt;
     var faqText = (context.hits || []).map(function (h, i) {
       return '[' + (i + 1) + '] Q: ' + h.faq.question + '\nA: ' + h.faq.answer;
     }).join('\n\n');
+    if (cfg.system && String(cfg.system).trim()) {
+      return String(cfg.system)
+        .replace(/\{\{intentLabel\}\}/g, context.intentLabel || '其他咨询')
+        .replace(/\{\{faq\}\}/g, faqText || '（无匹配条目）');
+    }
     return [
       '你是「数理天医」平台的智能客服「天医小助手」，服务范围是：订单与支付、退款售后、课程与会员、体质报告、技术支持、账号问题。',
       '回答要求：用简体中文，语气温和专业，分点简洁（一般不超过 180 字）；只依据下面提供的知识库与平台规则作答，不编造订单状态、金额、时效或承诺。',
@@ -1909,6 +2030,95 @@
     return runOne(0);
   }
 
+  /* ---------- 第八轮：A/B 实验 / 多轮测试 / 技能路由辅助 / 翻译 / 提示词模板 ---------- */
+
+  /* A/B 按权重随机分组；未启用返回 null */
+  function abAssignVariant() {
+    var cfg = load().settings.abTest || DEFAULT_SETTINGS.abTest;
+    if (!cfg.enabled || !Array.isArray(cfg.variants) || !cfg.variants.length) return null;
+    var total = cfg.variants.reduce(function (a, v) { return a + (Number(v.weight) || 0); }, 0);
+    if (total <= 0) return cfg.variants[0].id;
+    var r = Math.random() * total;
+    for (var i = 0; i < cfg.variants.length; i++) {
+      r -= (Number(cfg.variants[i].weight) || 0);
+      if (r < 0) return cfg.variants[i].id;
+    }
+    return cfg.variants[cfg.variants.length - 1].id;
+  }
+
+  /* A/B 报告：按变体聚合会话量/满意度/解决率/转人工率 */
+  function abReport() {
+    var s = load();
+    var cfg = s.settings.abTest || DEFAULT_SETTINGS.abTest;
+    var byVar = {};
+    (cfg.variants || []).forEach(function (v) { byVar[v.id] = { id: v.id, text: v.text, convs: 0, rated: 0, ratingSum: 0, resolved: 0, handoff: 0 }; });
+    s.conversations.forEach(function (c) {
+      var k = c.abVariant && byVar[c.abVariant] ? c.abVariant : null;
+      if (!k) return;
+      var g = byVar[k];
+      g.convs++;
+      if (c.rating) { g.rated++; g.ratingSum += c.rating.score; }
+      if (c.status === 'resolved') g.resolved++;
+      if (c.status === 'waiting_human' || (c.messages || []).some(function (m) { return m.handoff; })) g.handoff++;
+    });
+    var rows = Object.keys(byVar).map(function (k) {
+      var g = byVar[k];
+      return {
+        id: g.id, text: g.text, convs: g.convs,
+        avgRating: g.rated ? Math.round(g.ratingSum / g.rated * 100) / 100 : null,
+        resolveRate: g.convs ? Math.round(g.resolved / g.convs * 1000) / 1000 : 0,
+        handoffRate: g.convs ? Math.round(g.handoff / g.convs * 1000) / 1000 : 0
+      };
+    });
+    /* 样本量不足时明确提示，不给出伪显著结论 */
+    var minSample = Math.min.apply(null, rows.map(function (r) { return r.convs; }).concat([Infinity]));
+    return { enabled: !!cfg.enabled, variants: rows, enoughSample: minSample >= 30 };
+  }
+
+  /* 多轮对话测试：脚本 = [{turns:[输入1,输入2…], expectFinalHandoff?, expectIntent?}]，
+     逐轮 simulate（每轮带前文关键线索的简化模拟），输出逐轮链路结论 */
+  function runMultiTurnTest(scripts) {
+    var list = Array.isArray(scripts) ? scripts : [];
+    if (!list.length) return null;
+    var results = [], passed = 0;
+    list.forEach(function (sc, si) {
+      var turns = (sc.turns || []).map(String);
+      var turnOut = [], finalIntent = 'other', finalHandoff = false;
+      turns.forEach(function (t, ti) {
+        var r = simulate(t);
+        finalIntent = r.intent;
+        finalHandoff = finalHandoff || r.handoff;
+        turnOut.push({ turn: ti + 1, input: t.slice(0, 40), intent: r.intent, handoff: r.handoff, confident: r.confident });
+      });
+      var checks = {};
+      if (typeof sc.expectFinalHandoff === 'boolean') checks.finalHandoff = finalHandoff === sc.expectFinalHandoff;
+      if (sc.expectIntent) checks.finalIntent = finalIntent === sc.expectIntent;
+      if (typeof sc.expectResolvedByKnowledge === 'boolean') {
+        checks.resolvedByKnowledge = turns.length > 0 && turnOut[turnOut.length - 1].confident && !finalHandoff;
+        if (sc.expectResolvedByKnowledge) checks.resolvedByKnowledge = !!checks.resolvedByKnowledge;
+      }
+      var okAll = Object.keys(checks).every(function (k) { return checks[k]; });
+      if (okAll) passed++;
+      results.push({ id: sc.id || ('脚本' + (si + 1)), turns: turnOut, checks: checks, verdict: okAll ? 'pass' : 'fail' });
+    });
+    return {
+      kind: 'multi-turn', total: list.length, passed: passed,
+      passRate: Math.round(passed / list.length * 1000) / 1000,
+      confidence: wilsonInterval(passed, list.length),
+      decision: passed === list.length ? 'pass' : 'fail',
+      results: results
+    };
+  }
+
+  /* LLM 实时翻译（英文界面时把回答译成英文；依赖已配置的 LLM） */
+  function translateText(text, targetLang) {
+    if (targetLang !== 'en' || !llmReady()) return Promise.resolve(null);
+    return llmChat([
+      { role: 'system', content: '你是客服翻译器。把客服回答准确翻译为自然流畅的英文，保留数字与格式，不要添加解释。' },
+      { role: 'user', content: String(text).slice(0, 1500) }
+    ], { temperature: 0, purpose: 'translate' }).then(function (r) { return r.text; });
+  }
+
   function scanCompliance(text) {
     var cfg = load().settings.compliance || DEFAULT_SETTINGS.compliance;
     if (!cfg.enabled) return [];
@@ -2127,7 +2337,10 @@
       llmJudge: llmJudge,
       runLlmRegression: runLlmRegression,
       judgeModelName: judgeModelName,
-      usageSummary: usageSummary
+      usageSummary: usageSummary,
+      abReport: abReport,
+      runMultiTurnTest: runMultiTurnTest,
+      translateText: translateText
     },
     I18N: I18N,
     SENTIMENTS: SENTIMENTS,
