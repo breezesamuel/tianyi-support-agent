@@ -95,11 +95,22 @@
         <input class="input" id="convFilter" placeholder="搜索会话标题或消息内容">
         <select class="select" id="convIntentFilter"><option value="">全部意图</option></select>
         <select class="select" id="convStatusFilter"><option value="">全部状态</option><option value="active">进行中</option><option value="waiting_human">等待人工</option><option value="resolved">已解决</option></select>
+        <select class="select" id="convQueueFilter"><option value="">全部队列</option><option value="vip">仅 VIP</option><option value="queued">排队中（未分配）</option><option value="mine">分配给我的</option></select>
         <span class="spacer"></span>
         <span class="muted" id="convCount" style="font-size:12px"></span>
       </div>
+      <div class="batchbar hidden" id="batchBar">
+        <span id="batchCount" class="muted" style="font-size:12px">已选 0 条</span>
+        <select class="select" id="batchAgent"><option value="">选择坐席…</option></select>
+        <button class="btn btn-sm" data-batch="assign">批量分配</button>
+        <button class="btn btn-sm" data-batch="tag">加标签</button>
+        <button class="btn btn-sm" data-batch="vip">标 VIP</button>
+        <button class="btn btn-sm" data-batch="resolve">标已解决</button>
+        <button class="btn btn-sm btn-danger" data-batch="delete">删除</button>
+        <button class="btn btn-sm" data-batch="clear">取消选择</button>
+      </div>
       <div class="table-wrap"><table class="data">
-        <thead><tr><th>会话</th><th>识别意图</th><th>状态</th><th>SLA</th><th>消息数</th><th>满意度</th><th>最近活动</th><th>操作</th></tr></thead>
+        <thead><tr><th style="width:34px"><input type="checkbox" id="convCheckAll" aria-label="全选"></th><th>会话</th><th>识别意图</th><th>状态</th><th>队列</th><th>SLA</th><th>消息数</th><th>满意度</th><th>最近活动</th><th>操作</th></tr></thead>
         <tbody id="convTable"></tbody>
       </table></div>
     </section>
@@ -367,6 +378,25 @@
           <div class="switch-row" style="margin-top:10px">
             <div class="sr-text"><b>语音输入</b><small>访客可用浏览器语音识别输入问题（不支持时自动降级）</small></div>
             <label class="switch"><input type="checkbox" id="setVoiceEnabled"><span></span></label>
+          </div>
+          <div class="divider"></div>
+          <div class="switch-row">
+            <div class="sr-text"><b>启用排队</b><small>转人工会话按 VIP 优先 + 入队时间显示排队位置</small></div>
+            <label class="switch"><input type="checkbox" id="setQueueEnabled"><span></span></label>
+          </div>
+          <div class="field"><label>人工服务时间</label><input class="input" id="setServiceHours" placeholder="09:00-21:00"><div class="hint">非服务时间转人工将触发离线自动回复提示</div></div>
+          <div class="switch-row">
+            <div class="sr-text"><b>关键词自动回复</b><small>命中关键词时直接答复，优先级高于知识库检索</small></div>
+            <label class="switch"><input type="checkbox" id="setAutoReplyEnabled"><span></span></label>
+          </div>
+          <div class="switch-row">
+            <div class="sr-text"><b>离线自动回复</b><small>非服务时间转人工时自动提示</small></div>
+            <label class="switch"><input type="checkbox" id="setOfflineEnabled"><span></span></label>
+          </div>
+          <div class="field"><label>离线回复文案</label><textarea class="textarea" id="setOfflineText"></textarea></div>
+          <div class="field"><label>关键词规则（每行一条，格式：关键词1|关键词2 => 回复）</label>
+            <textarea class="textarea" id="setKeywordRules" rows="5" placeholder="发票|开票 => 支持电子发票，请在发票管理申请&#10;服务时间|上班时间 => 人工服务时间 09:00-21:00"></textarea>
+            <div class="hint">留空则保留现有规则；保存时整体覆盖。</div>
           </div>
           <button class="btn btn-primary" id="saveSettingsBtn" style="margin-top:16px">保存策略</button>
         </div>
