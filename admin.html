@@ -141,6 +141,14 @@
         <thead><tr><th>问题</th><th>分类</th><th>意图</th><th>命中次数</th><th>状态</th><th>操作</th></tr></thead>
         <tbody id="faqTable"></tbody>
       </table></div>
+      <div class="panel" style="margin-top:14px" id="faqDraftPanel">
+        <div class="panel-head"><h3>知识缺口草稿</h3><span class="spacer"></span><span class="tag" id="faqDraftCount">0 条待审核</span><button class="btn btn-sm" id="genFaqDraftBtn" style="margin-left:10px">从知识缺口生成草稿</button></div>
+        <div class="panel-sub">未解决且知识库未命中的访客提问自动聚合为草稿，人工补写答案后一键入库，形成「缺口 → 草稿 → 审核 → 知识库」闭环。</div>
+        <div class="table-wrap"><table class="data">
+          <thead><tr><th>提问</th><th>出现次数</th><th>意图</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="faqDraftTable"></tbody>
+        </table></div>
+      </div>
     </section>
 
     <!-- 模型接入 -->
@@ -374,6 +382,26 @@
           <div class="divider"></div>
           <div style="font-size:12px;margin-bottom:6px"><b>WCAG 2.2 自查</b></div>
           <div id="a11yChecklist"></div>
+        </div>
+      </div>
+      <div class="settings-grid" style="margin-top:14px">
+        <div class="panel">
+          <h3>LLM 真实评测（LLM-as-Judge）</h3>
+          <div class="panel-sub">用同一批用例驱动真实大模型生成回答，再按评分卡评审。需在「模型接入」配置 API Key；评审模型可与生成模型分离以消除自增强偏见。</div>
+          <div class="field"><label>评测通过线（0-10）</label><input class="input" id="judgeMinScore" type="number" min="0" max="10" step="0.5"></div>
+          <div class="field"><label>评审专用模型（留空 = 用主模型，自评将标注局限）</label><input class="input" id="judgeModel" placeholder="如 deepseek-reasoner"></div>
+          <button class="btn btn-primary" id="runLlmRegBtn">运行 LLM 真实评测</button>
+          <div class="hint" id="llmRegProgress" style="margin-top:8px"></div>
+          <div id="llmRegResult" style="margin-top:14px"></div>
+        </div>
+        <div class="panel">
+          <h3>用量与成本</h3>
+          <div class="panel-sub">按接口返回的 usage 统计（未返回时按字数估算并标注）；单价按 ¥/百万 token 填写</div>
+          <div class="kv" id="usagePanel"></div>
+          <div class="field" style="margin-top:10px"><label>单日预算（¥，0 = 不限额）</label><input class="input" id="setDailyBudget" type="number" min="0" step="0.5"></div>
+          <div class="field"><label>输入单价（¥/百万 token）</label><input class="input" id="setPriceIn" type="number" min="0" step="0.1"></div>
+          <div class="field"><label>输出单价（¥/百万 token）</label><input class="input" id="setPriceOut" type="number" min="0" step="0.1"></div>
+          <button class="btn" id="saveUsageBtn">保存预算与单价</button>
         </div>
       </div>
     </section>
