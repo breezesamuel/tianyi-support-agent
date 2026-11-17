@@ -4,6 +4,38 @@
   var TY = window.TY;
   var U = TY.utils, Store = TY.Store, Engine = TY.Engine;
   var CURRENT_KEY = 'tianyi_current_conv_v1';
+  var idleTimer = null;
+  var proactiveShown = false;
+
+  function t(k) { return TY.t(k); }
+  function ilabel(k) { return TY.intentLabel(k); }
+
+  /* 应用多语言到静态 DOM 文案 */
+  function applyI18n() {
+    var lang = Store.state().settings.language || 'zh';
+    var isEn = lang === 'en';
+    function set(id, text) { var n = el(id); if (n) n.textContent = text; }
+    set('adminText', t('admin'));
+    set('newChatBtn', t('newChat'));
+    set('convRecordsText', t('convRecords'));
+    set('disclaimerTitle', t('disclaimer'));
+    set('disclaimerText', t('disclaimerText'));
+    set('helpLink', t('help'));
+    set('lblIntent', t('intent'));
+    set('lblStatus', t('status'));
+    set('lblMsgs', t('msgs'));
+    set('lblFaq', t('faqHits'));
+    set('lblRating', t('rating'));
+    set('lblMood', t('mood'));
+    set('lblAssignee', '服务坐席');
+    set('langLabel', isEn ? '中' : 'EN');
+    set('chatSub', t('subtitle'));
+    set('handoffBtn', t('handoff'));
+    set('composerFoot', t('composerFoot'));
+    var search = el('convSearch'); if (search) search.placeholder = t('searchConv');
+    var input = el('msgInput'); if (input) input.placeholder = t('placeholder');
+    document.documentElement.lang = isEn ? 'en' : 'zh-CN';
+  }
 
   function el(id) { return document.getElementById(id); }
   var currentId = null;
@@ -48,7 +80,11 @@
   function currentConv() { return currentId ? Store.getConversation(currentId) : null; }
 
   function statusLabel(status) {
-    return { active: '进行中', waiting_human: '等待人工', resolved: '已解决' }[status] || '进行中';
+    return t(status) || t('active');
+  }
+  function moodHtml(level) {
+    var m = TY.SENTIMENTS[level] || TY.SENTIMENTS[3];
+    return '<span class="intent-tag" style="color:' + m.color + '">' + t('mood') + ' ' + TY.sentimentLabel(level) + '</span>';
   }
 
   /* ---------- sidebar ---------- */
@@ -85,7 +121,7 @@
   /* ---------- messages ---------- */
   function welcomeHtml() {
     return '<div class="welcome-card">' +
-      '<h3>您好，我是天医小助手</h3>' +
+      '<h3>' + t('welcomeTitle') + '</h3>' +
       '<p>' + U.escapeHtml(Store.state().settings.welcome) + '</p>' +
       '<div class="quick-chips">' + QUICK.map(function (q) {
         return '<button class="quick-chip" data-q="' + U.escapeHtml(q) + '">' + U.escapeHtml(q) + '</button>';
@@ -115,34 +151,35 @@
     var meta = '<div class="msg-meta">' +
       '<span>' + U.formatTime(m.ts) + '</span>' +
       (isUser && m.intent && m.intent !== 'other'
-        ? '<span class="intent-tag" style="color:' + intent.color + '">' + intent.label + (m.intentSource === 'llm' ? ' · AI' : '') + '</span>'
+        ? '<span class="intent-tag" style="color:' + intent.color + '">' + ilabel(m.intent) + (m.intentSource === 'llm' ? ' · AI' : '') + '</span>'
         : '') +
+      (isUser && m.mood && m.mood !== 3 ? moodHtml(m.mood) : '') +
       (m.engine ? '<span>' + U.escapeHtml(m.engine) + '</span>' : '') +
       (m.complianceFlags && m.complianceFlags.length ? '<span class="intent-tag" style="color:#b4453c">合规标记</span>' : '') +
       '</div>';
     var sources = (m.sources && m.sources.length)
-      ? '<details class="sources"><summary>参考知识库 ' + m.sources.length + ' 条</summary><ul>' +
+      ? '<details class="sources"><summary>' + t('sources') + ' ' + m.sources.length + '</summary><ul>' +
           m.sources.map(function (s) { return '<li>' + U.escapeHtml(s.question) + '（匹配度 ' + s.score + '）</li>'; }).join('') +
         '</ul></details>'
       : '';
     var handoff = m.handoff
-      ? '<div class="handoff-card"><strong>已为您转接人工客服</strong>' + U.escapeHtml(m.handoff) +
-        '　工单已生成，人工客服服务时间 09:00–21:00。您也可以继续补充信息。</div>'
+      ? '<div class="handoff-card"><strong>' + t('handoffDone') + '</strong>' + U.escapeHtml(m.handoff) +
+        U.escapeHtml(t('handoffTip')) + '</div>'
       : '';
     var rating = '';
     if (isLastBot && conv) {
       if (conv.rating) {
-        rating = '<div class="rating-box"><span class="rating-done">✓ 已评价：' + conv.rating.score + ' 星</span>' +
+        rating = '<div class="rating-box"><span class="rating-done">' + t('rated') + conv.rating.score + t('stars') + '</span>' +
           (conv.rating.comment ? '<span class="muted">' + U.escapeHtml(conv.rating.comment) + '</span>' : '') + '</div>';
       } else {
         rating = '<div class="rating-box" data-rating-box data-score="' + pendingScore + '">' +
-          '<span>本次回答是否解决您的问题？</span>' +
+          '<span>' + t('rateQ') + '</span>' +
           '<div class="stars">' + [1, 2, 3, 4, 5].map(function (n) {
-            return '<button class="star ' + (n <= pendingScore ? 'on' : '') + '" data-score="' + n + '" title="' + n + ' 星">★</button>';
+            return '<button class="star ' + (n <= pendingScore ? 'on' : '') + '" data-score="' + n + '" title="' + n + t('stars') + '">★</button>';
           }).join('') + '</div>' +
-          '<input class="input" data-rating-comment placeholder="补充说明（选填）">' +
-          '<input class="input" data-rating-nps type="number" min="0" max="10" placeholder="推荐意愿 0-10（选填）" style="margin-top:6px">' +
-          '<button class="btn btn-sm" data-rating-submit style="margin-top:6px">提交评价</button>' +
+          '<input class="input" data-rating-comment placeholder="' + t('rateComment') + '">' +
+          '<input class="input" data-rating-nps type="number" min="0" max="10" placeholder="' + t('nps') + '" style="margin-top:6px">' +
+          '<button class="btn btn-sm" data-rating-submit style="margin-top:6px">' + t('rateSubmit') + '</button>' +
         '</div>';
       }
     }
@@ -176,11 +213,14 @@
   function renderAside() {
     var conv = currentConv();
     var s = Store.state();
-    el('infoIntent').textContent = conv ? (TY.INTENTS[conv.intent] || TY.INTENTS.other).label : '—';
-    el('infoStatus').textContent = conv ? statusLabel(conv.status) : '进行中';
+    el('infoIntent').textContent = conv ? ilabel(conv.intent) : '—';
+    el('infoStatus').textContent = conv ? statusLabel(conv.status) : t('active');
     el('infoMsgs').textContent = conv ? (conv.messages || []).length : 0;
     el('infoFaq').textContent = conv ? conv.messages.filter(function (m) { return m.sources && m.sources.length; }).length + ' 次' : '0 次';
-    el('infoRating').textContent = conv && conv.rating ? conv.rating.score + ' ★' : '未评价';
+    el('infoRating').textContent = conv && conv.rating ? conv.rating.score + ' ★' : t('notRated');
+    el('infoMood').textContent = conv ? TY.sentimentLabel(conv.mood || 3) : TY.sentimentLabel(3);
+    var agent = (s.settings.agents || []).filter(function (a) { return a.id === (conv && conv.assignee); })[0];
+    el('infoAssignee').textContent = agent ? agent.name : '—';
     var lastUser = conv && conv.messages.slice().reverse().filter(function (m) { return m.role === 'user'; })[0];
     var list;
     if (lastUser) {
@@ -201,7 +241,12 @@
     el('composerFoot').textContent = ready
       ? '按 Enter 发送 · 回答由大模型结合知识库生成，请以平台实际规则为准'
       : '按 Enter 发送，Shift + Enter 换行 · 回答由知识库与规则引擎生成，请以平台实际规则为准';
-    el('chatIntent').innerHTML = '<span class="tag-dot"></span>' + (conv ? (TY.INTENTS[conv.intent] || TY.INTENTS.other).label : '待识别');
+    el('chatIntent').innerHTML = '<span class="tag-dot"></span>' + (conv ? ilabel(conv.intent) : t('pending'));
+    var moodLevel = conv ? (conv.mood || 3) : 3;
+    var moodTag = el('moodTag');
+    var mm = TY.SENTIMENTS[moodLevel] || TY.SENTIMENTS[3];
+    moodTag.style.color = mm.color;
+    el('moodText').textContent = t('mood') + ' ' + TY.sentimentLabel(moodLevel);
   }
 
   function renderAll() { renderSidebar(); renderMessages(); renderAside(); }
@@ -274,7 +319,14 @@
     autoResize();
 
     var ruleIntent = Engine.detectIntent(text);
-    Store.addMessage(conv.id, { role: 'user', content: text, intent: ruleIntent.key, intentSource: 'rule' });
+    var mood = Engine.detectSentiment(text);
+    Store.addMessage(conv.id, { role: 'user', content: text, intent: ruleIntent.key, intentSource: 'rule', mood: mood.level });
+    var moodPatch = { mood: mood.level };
+    if (Store.state().settings.routing && Store.state().settings.routing.enabled && !conv.assignee) {
+      var agent = Store.autoAssign(ruleIntent.key);
+      if (agent) moodPatch.assignee = agent.id;
+    }
+    Store.updateConversation(conv.id, moodPatch);
     renderMessages();
 
     var retrieval = Engine.retrieveFaq(text, ruleIntent.key, 3);
@@ -326,7 +378,7 @@
     }
 
     var wantsHandoff = /\[\[HANDOFF\]\]/.test(full) || intent.key === 'human';
-    var dissatisfied = /没用|答非所问|还是不行|解决不了|投诉|太差|不满意/.test(text);
+    var dissatisfied = /没用|答非所问|还是不行|解决不了|投诉|太差|不满意/.test(text) || mood.level <= 2;
     var noHit = !retrieval.confident;
     var resolved = llmUsed ? !wantsHandoff : retrieval.confident;
     var unresolved = resolved ? 0 : (conv.unresolvedTurns || 0) + 1;
@@ -338,6 +390,7 @@
 
     var reason = '';
     if (intent.key === 'human') reason = '用户主动要求人工客服';
+    else if (mood.level <= 2 && !/没用|答非所问|还是不行|解决不了|投诉|太差|不满意/.test(text)) reason = '检测到负面情绪（' + TY.sentimentLabel(mood.level) + '），优先人工跟进';
     else if (dissatisfied) reason = '用户对回答表示不满，需人工跟进';
     else if (/\[\[HANDOFF\]\]/.test(full)) reason = '模型判断知识库无法覆盖或需查询具体业务数据';
     else if (settings.autoHandoff && unresolved >= (settings.handoffThreshold || 2)) reason = '连续 ' + unresolved + ' 轮未能命中知识库，自动升级人工';
@@ -367,6 +420,8 @@
     busy = false;
     setBusy(false);
     controller = null;
+    proactiveShown = false;
+    resetIdleTimer();
     renderAll();
   }
 
@@ -374,6 +429,24 @@
     el('sendBtn').disabled = v;
     el('msgInput').disabled = v;
     el('stopBtn').classList.toggle('hidden', !v);
+  }
+
+  /* 主动消息：访客闲置超过阈值时主动提示一次（竞品 Proactive Messaging 的本地实现） */
+  function resetIdleTimer() {
+    var p = Store.state().settings.proactive || {};
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    if (!p.enabled || proactiveShown) return;
+    var sec = U.clamp(Number(p.seconds) || 45, 10, 600);
+    idleTimer = setTimeout(function () {
+      if (!currentId || busy) return;
+      proactiveShown = true;
+      Store.addMessage(currentId, {
+        role: 'assistant', content: p.text || t('proactiveDefault'), engine: '主动消息',
+        proactive: true
+      });
+      renderAll();
+      U.toast('已发送主动关怀消息');
+    }, sec * 1000);
   }
 
   function autoResize() {
@@ -386,6 +459,13 @@
   function bind() {
     el('newChatBtn').addEventListener('click', newChat);
     el('menuBtn').addEventListener('click', function () { el('sidebar').classList.toggle('open'); });
+    el('langBtn').addEventListener('click', function () {
+      var cur = Store.state().settings.language || 'zh';
+      Store.setLanguage(cur === 'zh' ? 'en' : 'zh');
+      applyI18n(); renderAll();
+      U.toast(cur === 'zh' ? 'Switched to English' : '已切换为中文', 'success');
+    });
+    el('msgInput').addEventListener('input', resetIdleTimer);
     el('convSearch').addEventListener('input', function (e) { searchTerm = e.target.value; renderSidebar(); });
     el('convList').addEventListener('click', function (e) {
       var del = e.target.closest('[data-del]');
@@ -446,7 +526,9 @@
   }
 
   function init() {
+    applyI18n();
     bind();
+    resetIdleTimer();
     window.addEventListener('tianyi:cloud-sync', function (e) {
       if (!e.detail || e.detail.source !== 'pull') return;
       if (currentId && !Store.getConversation(currentId)) newChat();
