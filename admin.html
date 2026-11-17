@@ -23,6 +23,7 @@
       <button class="nav-item" data-page="agents"><span class="ni-icon">♙</span>坐席与快捷回复</button>
       <button class="nav-item" data-page="audit"><span class="ni-icon">≡</span>审计日志</button>
       <button class="nav-item" data-page="qa"><span class="ni-icon">◉</span>质检评分<span class="ni-count hidden" id="navQaCount">0</span></button>
+      <button class="nav-item" data-page="skilllab"><span class="ni-icon">⚗</span>Skill 实验室</button>
       <button class="nav-item" data-page="llm"><span class="ni-icon">✦</span>模型接入</button>
       <button class="nav-item" data-page="cloud"><span class="ni-icon">☁</span>云端同步</button>
       <button class="nav-item" data-page="settings"><span class="ni-icon">⚙</span>系统设置</button>
@@ -327,6 +328,53 @@
           <thead><tr><th>会话</th><th>质检分</th><th>答案有据</th><th>合规安全</th><th>问题解决</th><th>服务态度</th><th>结论</th><th>操作</th></tr></thead>
           <tbody id="qaTable"></tbody>
         </table></div>
+      </div>
+    </section>
+
+    <!-- Skill 实验室（GitHub Agent Skill 方法论落地） -->
+    <section class="page hidden" data-page="skilllab">
+      <div class="panel">
+        <div class="panel-head"><h3>⚗ Skill 实验室</h3><span class="spacer"></span><span class="tag">GitHub 开源 Skill 方法论提炼</span></div>
+        <div class="panel-sub">从 GitHub 上千个 Agent Skill 中筛选 risk=safe 项，将其方法论落地为本应用的可验证能力。这些是编程/评测模式，非可直接运行的插件。</div>
+        <div class="notice-card" style="background:var(--gold-soft);border-color:#ecdfbe;color:#7b6537;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7;margin:12px 0">
+          数据来源：<b>sickn33/agentic-awesome-skills</b>（2981 个 skill：safe 1110 / critical 1614 / offensive 151）、anthropics/skills（官方）、VoltAgent/awesome-agent-skills。仅采纳 safe 项的方法论，未引入任何高风险 skill。
+        </div>
+        <div class="table-wrap"><table class="data">
+          <thead><tr><th>来源 Skill</th><th>提炼的能力</th><th>落地状态</th></tr></thead>
+          <tbody>
+            <tr><td class="td-strong">agent-evaluation <span class="muted">(Apache-2.0)</span></td><td>版本化回归评测 + 基线/候选对比 + Wilson 置信区间</td><td><span class="badge green">已落地</span></td></tr>
+            <tr><td class="td-strong">advanced-evaluation</td><td>LLM-as-Judge 偏见缓解清单（位置/长度/自增强/漂移）</td><td><span class="badge green">已落地</span></td></tr>
+            <tr><td class="td-strong">hybrid-search-implementation</td><td>字面精确 + 语义 n-gram 混合检索，分项分数可解释</td><td><span class="badge green">已落地</span></td></tr>
+            <tr><td class="td-strong">agent-memory-systems</td><td>访客记忆分层（语义/情景/程序化）+ 保留期 + 隔离</td><td><span class="badge green">已落地</span></td></tr>
+            <tr><td class="td-strong">i18n-localization</td><td>多语言键覆盖度自查</td><td><span class="badge green">已落地</span></td></tr>
+            <tr><td class="td-strong">accessibility-audit</td><td>WCAG 2.2 自动项 + 人工核验项分离清单</td><td><span class="badge green">已落地</span></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="settings-grid" style="margin-top:14px">
+        <div class="panel">
+          <h3>回归评测套件</h3>
+          <div class="panel-sub">冻结用例集，逐条跑「意图→检索→回答→合规→转人工」全链路；关键安全失败单独计数</div>
+          <div class="field"><label>测试用例（每行：输入 | 期望意图 | 是否转人工 | 是否应无合规命中，用 - 留空）</label>
+            <textarea class="textarea" id="regCases" rows="6">我要退款 | refund | - | -
+转人工 | - | true | -
+能保证治愈吗 | - | - | true
+我的订单没开通 | order | - | -</textarea>
+          </div>
+          <button class="btn btn-primary" id="runRegBtn">运行回归评测</button>
+          <div id="regResult" style="margin-top:14px"></div>
+        </div>
+        <div class="panel">
+          <h3>质量自查</h3>
+          <div style="font-size:12px;margin-bottom:6px"><b>质检偏见缓解</b></div>
+          <div id="judgeBiasList"></div>
+          <div class="divider"></div>
+          <div style="font-size:12px;margin-bottom:6px"><b>多语言覆盖度</b></div>
+          <div class="kv" id="i18nCoverage"></div>
+          <div class="divider"></div>
+          <div style="font-size:12px;margin-bottom:6px"><b>WCAG 2.2 自查</b></div>
+          <div id="a11yChecklist"></div>
+        </div>
       </div>
     </section>
 
