@@ -4,7 +4,7 @@
 
 ## 一、结论摘要
 
-- 当前应用已覆盖 **109 项**，部分覆盖 **38 项**，完全缺失 **539 项**。
+- 当前应用已覆盖 **134 项**，部分覆盖 **13 项**，完全缺失 **539 项**。
 - 竞品普遍已具备而我们缺失的 P1 模块集中在：**会话协作、坐席辅助、质检合规、客户画像、自助服务、主动消息**。
 - 企业级竞品（Decagon/Sierra/Cognigy/Zendesk）领先在：AOP 自然语言流程、实时质检、跨渠道记忆、深度业务动作、治理与追踪。
 - 国内竞品（七鱼/智齿/环信/Udesk）领先在：全渠道、呼叫中心、工单流转、智能质检、数据大屏、行业模板。
@@ -32,15 +32,15 @@
 
 | 状态 | 数量 | 说明 |
 |---|---:|---|
-| 已有 | 109 | 当前版本已具备，进入保持与测试 |
-| 部分 | 38 | 有雏形但深度不足，优先补齐 |
+| 已有 | 134 | 当前版本已具备，进入保持与测试 |
+| 部分 | 13 | 有雏形但深度不足，优先补齐 |
 | 缺失 | 539 | 需新增，按优先级分批 |
 
 | 优先级 | 数量 |
 |---|---:|
-| P0 保持 | 109 |
+| P0 保持 | 134 |
 | P1 优先 | 213 |
-| P1 补齐 | 38 |
+| P1 补齐 | 13 |
 | P2 规划 | 234 |
 | P3 观察 | 92 |
 
@@ -106,9 +106,9 @@
 | F02-019 | 快捷回复 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F02-020 | 回复宏 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F02-021 | 回复模板 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F02-022 | 富文本消息 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F02-023 | 表情 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F02-024 | 图片消息 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F02-022 | 富文本消息 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F02-023 | 表情 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F02-024 | 图片消息 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F02-025 | 文件消息 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F02-026 | 语音消息 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F02-027 | 视频消息 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -169,9 +169,9 @@
 | F03-039 | 自我改进 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F03-040 | 知识缺口发现 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F03-041 | 训练数据导出 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
-| F03-042 | 模型切换 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
+| F03-042 | 模型切换 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F03-043 | 多模型路由 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
-| F03-044 | 提示词管理 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
+| F03-044 | 提示词管理 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F03-045 | 提示词版本 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F03-046 | 沙箱环境 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 
@@ -281,7 +281,7 @@
 | F06-007 | 敏感问题转人工 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-008 | 转接上下文 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-009 | 人工排队 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F06-010 | 技能路由 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F06-010 | 技能路由 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-011 | VIP 路由 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-012 | 服务时间 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-013 | 非工作时间留言 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -289,7 +289,7 @@
 | F06-015 | 人工接管 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-016 | 机器人辅助人工 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-017 | 坐席建议回复 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F06-018 | 实时翻译 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F06-018 | 实时翻译 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-019 | 会话摘要 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-020 | 交接备注 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F06-021 | 转接原因 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -313,8 +313,8 @@
 | F07-009 | 购物车信息 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-010 | 订单历史 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-011 | 生命周期价值 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
-| F07-012 | 客户标签 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
-| F07-013 | 客户分群 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
+| F07-012 | 客户标签 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
+| F07-013 | 客户分群 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-014 | VIP 等级 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-015 | 客户偏好 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-016 | 历史会话 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
@@ -330,7 +330,7 @@
 | F07-026 | HubSpot 同步 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-027 | 账户层级 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-028 | 联系人层级 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
-| F07-029 | 客户时间线 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
+| F07-029 | 客户时间线 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-030 | 满意度历史 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-031 | 隐私掩码 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F07-032 | 客户出海信息 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
@@ -404,7 +404,7 @@
 | F09-020 | 知识库命中率 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-021 | 知识缺口 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-022 | 热门问题 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F09-023 | 情绪分布 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F09-023 | 情绪分布 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-024 | 质检得分 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-025 | 成本/解决 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-026 | 节省工时 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -412,7 +412,7 @@
 | F09-028 | 自定义报表 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-029 | 仪表盘 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-030 | 数据大屏 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F09-031 | 数据导出 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F09-031 | 数据导出 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-032 | 定时报告 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-033 | 邮件报告 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-034 | 自然语言分析 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -420,7 +420,7 @@
 | F09-036 | 异常检测 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-037 | 根因分析 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-038 | 队列监控 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F09-039 | 实时监控 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F09-039 | 实时监控 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-040 | 对话级分析 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F09-041 | 转化归因 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 
@@ -429,7 +429,7 @@
 | ID | 功能模块 | 天医状态 | 优先级 | 竞品覆盖 | 前端可行性 |
 |---|---|---|---|---|---|
 | F10-001 | 全量质检 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
-| F10-002 | 抽样质检 | 部分 | P1 补齐 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
+| F10-002 | 抽样质检 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-003 | 关键词检测 | 缺失 | P1 优先 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-004 | 敏感词过滤 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-005 | 违禁词过滤 | 缺失 | P1 优先 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
@@ -439,7 +439,7 @@
 | F10-009 | 合规评分 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-010 | 质检规则 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-011 | 质检模板 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
-| F10-012 | 人工复核 | 部分 | P1 补齐 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
+| F10-012 | 人工复核 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-013 | 申诉流程 | 缺失 | P1 优先 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-014 | 违规告警 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-015 | 审计日志 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
@@ -466,7 +466,7 @@
 | F10-036 | 答案引用 | 部分 | P1 补齐 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-037 | 模型训练退出 | 缺失 | P1 优先 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 | F10-038 | 儿童隐私保护 | 缺失 | P1 优先 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
-| F10-039 | 中医合规术语表 | 部分 | P1 补齐 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
+| F10-039 | 中医合规术语表 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk | 中 |
 
 ### 11. 主动与营销（33 项）
 
@@ -513,7 +513,7 @@
 | F12-001 | 多语言界面 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F12-002 | 多语言知识库 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F12-003 | 语言自动检测 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
-| F12-004 | 实时翻译 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
+| F12-004 | 实时翻译 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F12-005 | 坐席翻译 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F12-006 | 机器人多语言 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
 | F12-007 | 时区支持 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy | 中 |
@@ -626,7 +626,7 @@
 | F15-001 | 呼入机器人 | 缺失 | P3 观察 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
 | F15-002 | 外呼机器人 | 缺失 | P3 观察 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
 | F15-003 | 语音识别 | 缺失 | P3 观察 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
-| F15-004 | 语音合成 | 部分 | P1 补齐 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
+| F15-004 | 语音合成 | 已有 | P0 保持 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
 | F15-005 | 声纹识别 | 缺失 | P3 观察 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
 | F15-006 | 打断处理 | 缺失 | P3 观察 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
 | F15-007 | 静音检测 | 缺失 | P3 观察 | Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿 | 低 |
@@ -663,7 +663,7 @@
 | F16-002 | 自动补全 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F16-003 | 写作助手 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F16-004 | 语气调整 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F16-005 | 实时翻译 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F16-005 | 实时翻译 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F16-006 | 会话摘要 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F16-007 | 相似工单 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F16-008 | 相似会话 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -714,8 +714,8 @@
 | F17-017 | 机器人入口 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F17-018 | 服务目录 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F17-019 | 在线预约 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F17-020 | 工单提交 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
-| F17-021 | 工单进度查询 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F17-020 | 工单提交 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
+| F17-021 | 工单进度查询 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F17-022 | 服务状态页 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F17-023 | 公告 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
 | F17-024 | 知识订阅 | 缺失 | P1 优先 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 高 |
@@ -740,12 +740,12 @@
 | F18-011 | 测试集 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-012 | 单元测试 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-013 | 对话模拟 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
-| F18-014 | 多轮测试 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
-| F18-015 | 回归测试 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
+| F18-014 | 多轮测试 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
+| F18-015 | 回归测试 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-016 | 冒烟测试 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
-| F18-017 | A/B 实验 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
+| F18-017 | A/B 实验 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-018 | 灰度发布 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
-| F18-019 | 版本管理 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
+| F18-019 | 版本管理 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-020 | 回滚 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-021 | 发布审批 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
 | F18-022 | 沙箱 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio | 中 |
