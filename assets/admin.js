@@ -11,6 +11,7 @@
     return Math.max(min, Math.min(max, n));
   }
   var page = 'overview';
+  var autoTimer = null;
   var PAGE_META = {
     overview: ['数据概览', '对话量、满意度、意图分布与人工工单一览'],
     conversations: ['对话记录', '查看完整多轮对话、识别意图与满意度评价'],
@@ -66,6 +67,14 @@
     el('pageTitle').textContent = PAGE_META[name][0];
     el('pageSub').textContent = PAGE_META[name][1];
     render();
+    /* 实时监控：概览页 30 秒自动刷新（标签页隐藏时暂停，避免无谓计算） */
+    clearInterval(autoTimer);
+    autoTimer = null;
+    if (name === 'overview') {
+      autoTimer = setInterval(function () {
+        if (!document.hidden) render();
+      }, 30000);
+    }
   }
 
   /* ---------- overview ---------- */
@@ -132,6 +141,15 @@
       var i = TY.INTENTS[k] || TY.INTENTS.other;
       return bar(i.label, s.intentCount[k], maxI, i.color, s.intentCount[k] + ' 次');
     }).join('') : '<div class="empty" style="padding:16px">暂无意图数据</div>';
+
+    // 情绪分布（1-5）
+    var moodCount = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    st.conversations.forEach(function (c) { var m = c.mood || 3; moodCount[m] = (moodCount[m] || 0) + 1; });
+    var maxM = Math.max(moodCount[1], moodCount[2], moodCount[3], moodCount[4], moodCount[5], 1);
+    el('moodBars').innerHTML = [1, 2, 3, 4, 5].map(function (n) {
+      var sm = TY.SENTIMENTS[n];
+      return bar(sm.label + (n <= 2 ? ' ⚠' : ''), moodCount[n], maxM, sm.color, moodCount[n] + ' 条');
+    }).join('');
 
     // 状态 + FAQ
     el('statusBars').innerHTML = [
@@ -219,6 +237,43 @@
           '<button class="btn btn-sm btn-danger" data-act="del" data-id="' + c.id + '">删除</button></td></tr>';
     }).join('') : '<tr><td colspan="10"><div class="empty"><span class="empty-icon">▤</span>没有符合条件的会话</div></td></tr>';
     syncBatchBar();
+    renderVisitor360();
+  }
+
+  /* 访客 360：按 visitor.id 聚合客户画像 / 分群 / 时间线 */
+  function renderVisitor360() {
+    var convs = Store.state().conversations;
+    var map = {};
+    convs.forEach(function (c) {
+      var vid = (c.visitor && c.visitor.id) || 'anon';
+      if (!map[vid]) map[vid] = { id: vid, convs: [], tags: {}, ratingSum: 0, rated: 0, moodSum: 0, first: Infinity, last: 0, vip: false };
+      var g = map[vid];
+      g.convs.push(c);
+      (c.tags || []).forEach(function (t) { g.tags[t] = (g.tags[t] || 0) + 1; });
+      if (c.rating) { g.ratingSum += c.rating.score; g.rated++; }
+      g.moodSum += c.mood || 3;
+      g.first = Math.min(g.first, c.createdAt || Infinity);
+      g.last = Math.max(g.last, c.updatedAt || 0);
+      if (c.vip) g.vip = true;
+    });
+    var rows = Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return b.last - a.last; });
+    el('visitorCount').textContent = rows.length + ' 位访客';
+    el('visitor360Table').innerHTML = rows.length ? rows.map(function (g) {
+      var avgRating = g.rated ? (g.ratingSum / g.rated).toFixed(1) + ' ★' : '<span class="muted">—</span>';
+      var avgMood = (g.moodSum / g.convs.length).toFixed(1);
+      var segment = g.vip ? '<span class="badge red">VIP</span>' :
+        (g.convs.length >= 3 ? '<span class="badge amber">多次咨询</span>' :
+        ((g.moodSum / g.convs.length) <= 2.5 ? '<span class="badge gray">待关怀</span>' : '<span class="badge green">普通</span>'));
+      var tags = Object.keys(g.tags).map(function (t) { return '<span class="badge gray" style="margin-right:3px">' + esc(t) + '</span>'; }).join('') || '<span class="muted">—</span>';
+      return '<tr><td class="td-strong">' + segment + ' ' + esc(g.id === 'anon' ? '匿名访客' : g.id.slice(0, 10)) + '</td>' +
+        '<td>' + g.convs.length + '</td>' +
+        '<td class="td-clip" style="max-width:200px">' + tags + '</td>' +
+        '<td>' + avgRating + '</td>' +
+        '<td>' + avgMood + ' / 5</td>' +
+        '<td>' + (g.first === Infinity ? '—' : U.formatDate(g.first)) + '</td>' +
+        '<td>' + (g.last ? U.formatDate(g.last) : '—') + '</td></tr>';
+    }).join('') : '<tr><td colspan="7"><div class="empty"><span class="empty-icon">♙</span>暂无访客数据</div></td></tr>';
   }
 
   function agentOptions(current) {
@@ -332,15 +387,21 @@
     var f = el('handoffFilter').value;
     var list = Store.state().handoffs.filter(function (h) { return f === 'all' ? true : h.status === f; });
     el('handoffCount').textContent = '共 ' + list.length + ' 个工单';
+    var statusBadge = {
+      pending: '<span class="badge red">待处理</span>',
+      processing: '<span class="badge amber">处理中</span>',
+      resolved: '<span class="badge green">已处理</span>'
+    };
     el('handoffTable').innerHTML = list.length ? list.map(function (h) {
       return '<tr><td class="td-strong">' + esc(h.id.slice(-8)) + '</td>' +
         '<td class="td-clip">' + esc(convTitle(h.conversationId)) + '</td>' +
         '<td class="td-clip" title="' + esc(h.reason) + '">' + esc(h.reason) + '</td>' +
         '<td>' + intentBadge(h.intent) + '</td>' +
-        '<td>' + (h.status === 'pending' ? '<span class="badge red">待处理</span>' : '<span class="badge green">已处理</span>') + '</td>' +
+        '<td>' + (statusBadge[h.status] || esc(h.status)) + '</td>' +
         '<td>' + U.formatDateTime(h.createdAt) + '</td>' +
         '<td><button class="btn btn-sm" data-hact="view" data-id="' + h.conversationId + '">查看对话</button> ' +
-          (h.status === 'pending' ? '<button class="btn btn-sm btn-primary" data-hact="resolve" data-id="' + h.id + '">标记处理</button>' : '') +
+          (h.status === 'pending' ? '<button class="btn btn-sm btn-primary" data-hact="accept" data-id="' + h.id + '">开始处理</button>' : '') +
+          (h.status === 'pending' || h.status === 'processing' ? '<button class="btn btn-sm" data-hact="resolve" data-id="' + h.id + '">标记解决</button>' : '') +
         '</td></tr>';
     }).join('') : '<tr><td colspan="7"><div class="empty"><span class="empty-icon">✓</span>暂无工单</div></td></tr>';
   }
@@ -387,7 +448,24 @@
         '<div class="field" style="margin:0"><label>分类</label><select class="select" id="faqC">' + cats + '</select></div>' +
         '<div class="field" style="margin:0"><label>关联意图</label><select class="select" id="faqI">' + intents + '</select></div>' +
       '</div>' +
-      '<div class="modal-foot"><button class="btn" data-modal-close>取消</button><button class="btn btn-primary" id="faqSave">保存</button></div>');
+      '<div class="modal-foot"><button class="btn" data-modal-close>取消</button><button class="btn btn-primary" id="faqSave">保存</button></div>' +
+      (f && Array.isArray(f.revisions) && f.revisions.length
+        ? '<div style="margin-top:14px;border-top:1px solid var(--line,#eee7d8);padding-top:10px"><div style="font-size:12px"><b>版本历史（最近 ' + f.revisions.length + ' 条，可回退）</b></div>' +
+          f.revisions.map(function (r) {
+            return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px dashed var(--line,#eee7d8)">' +
+              '<span class="muted" style="min-width:110px">' + U.formatDateTime(r.ts) + '</span>' +
+              '<span class="td-clip" style="flex:1" title="' + esc(r.answer.slice(0, 60)) + '">' + esc(r.question.slice(0, 24)) + ' · ' + esc(r.answer.slice(0, 30)) + '…</span>' +
+              '<button class="btn btn-sm" data-revert-faq="' + r.ts + '" data-id="' + f.id + '">回退</button></div>';
+          }).join('') + '</div>'
+        : ''));
+    // 版本回退
+    el('modalBox').querySelectorAll('[data-revert-faq]').forEach(function (b) {
+      b.onclick = function () {
+        if (Store.revertFaq(b.getAttribute('data-id'), Number(b.getAttribute('data-revert-faq')))) {
+          closeModal(); renderFaq(); U.toast('已回退到历史版本', 'success');
+        }
+      };
+    });
     el('faqSave').onclick = function () {
       var q = el('faqQ').value.trim(), a = el('faqA').value.trim();
       if (!q || !a) { U.toast('问题与答案不能为空', 'warn'); return; }
@@ -413,6 +491,8 @@
     el('llmBaseUrl').value = l.baseUrl || '';
     el('llmModel').value = l.model || '';
     el('llmApiKey').value = l.apiKey || '';
+    el('llmTranslate').checked = !!l.translate;
+    el('llmPromptTemplate').value = (Store.state().settings.prompt && Store.state().settings.prompt.system) || '';
   }
   function readLlmForm() {
     return {
@@ -563,6 +643,8 @@
     var qa = s.qa || {};
     el('qaEnabled').checked = qa.enabled !== false;
     el('qaPassScore').value = qa.passScore || 3.5;
+    el('qaSampleRate').value = typeof qa.sampleRate === 'number' ? qa.sampleRate : 100;
+    el('qaReviewThreshold').value = typeof qa.reviewThreshold === 'number' ? qa.reviewThreshold : 2.5;
     el('privacyMode').value = (s.privacy && s.privacy.mode) || 'mask';
     el('privacyEnabled').checked = !(s.privacy && s.privacy.enabled === false);
     var dimCfg = qa.dimensions || TY.QA_DIMENSIONS.map(function (d) { return { key: d.key, weight: d.weight, critical: d.critical }; });
@@ -611,6 +693,25 @@
         '<td>' + verdict + (sc.failedCritical.length ? ' <span class="muted">' + sc.failedCritical.map(function (k) { return TY.QA_DIMENSIONS.filter(function (d) { return d.key === k; })[0].label; }).join('/') + '</span>' : '') + '</td>' +
         '<td><button class="btn btn-sm" data-qa-view="' + c.id + '">查看对话</button></td></tr>';
     }).join('') : '<tr><td colspan="8"><div class="empty" style="padding:22px"><span class="empty-icon">◉</span>暂无可质检的会话</div></td></tr>';
+
+    /* 人工复核队列 */
+    var rq = Store.reviewQueue();
+    el('reviewQueueTable').innerHTML = rq.length ? rq.map(function (r) {
+      return '<tr><td class="td-strong td-clip">' + esc(r.title || r.convId) + '</td>' +
+        '<td><b>' + r.score.toFixed(1) + '</b> / 5</td>' +
+        '<td>' + (r.critical.length ? esc(r.critical.map(function (k) {
+          var d = TY.QA_DIMENSIONS.filter(function (x) { return x.key === k; })[0];
+          return d ? d.label : k;
+        }).join('、')) : '<span class="muted">综合低分</span>') + '</td>' +
+        '<td><button class="btn btn-sm" data-qa-view="' + r.convId + '">查看对话</button></td></tr>';
+    }).join('') : '<tr><td colspan="4"><div class="empty" style="padding:18px"><span class="empty-icon">✓</span>暂无待复核会话</div></td></tr>';
+
+    /* 中医合规术语表预览 */
+    var gl = (s.compliance && s.compliance.glossary) || [];
+    el('glossaryPreview').innerHTML = gl.length
+      ? gl.map(function (g) { return '<div style="font-size:12px;padding:4px 0;border-bottom:1px dashed var(--line,#eee7d8)"><b>' + esc(g.term) + '</b><span class="muted"> · ' + esc(g.note) + '</span></div>'; }).join('')
+      : '<div class="muted" style="font-size:12px">暂无术语，左侧保存后显示</div>';
+    el('glossaryInput').value = gl.map(function (g) { return g.term + ' | ' + g.note; }).join('\n');
   }
 
   /* ---------- skill lab（GitHub Skill 方法论落地） ---------- */
@@ -829,6 +930,15 @@
     el('setDisclosureEnabled').checked = disc.enabled !== false;
     el('setDisclosureText').value = disc.text || '';
     el('setVoiceEnabled').checked = !(s.voice && s.voice.enabled === false);
+    if (el('setSpeakEnabled')) el('setSpeakEnabled').checked = !!(s.voice && s.voice.speak);
+    if (el('setAutoInvite')) el('setAutoInvite').checked = (s.satisfaction && s.satisfaction.autoInvite) !== false;
+    var ab = s.abTest || {};
+    if (el('setAbEnabled')) {
+      el('setAbEnabled').checked = !!ab.enabled;
+      var vs = ab.variants || [];
+      el('setAbA').value = (vs[0] && vs[0].text) || '';
+      el('setAbB').value = (vs[1] && vs[1].text) || '';
+    }
     var inbox = s.inbox || {};
     if (el('setQueueEnabled')) el('setQueueEnabled').checked = inbox.queueEnabled !== false;
     if (el('setServiceHours')) el('setServiceHours').value = inbox.serviceHours || '09:00-21:00';
@@ -936,6 +1046,40 @@
     el('exportBtn').addEventListener('click', function () {
       U.downloadJson('tianyi-agent-backup-' + U.formatDate(Date.now()) + '.json', Store.exportData());
       U.toast('备份已导出', 'success');
+    });
+    /* CSV 导出：会话 + 工单两张表（同一文件分节），便于 Excel 分析 */
+    el('exportCsvBtn').addEventListener('click', function () {
+      function csvCell(v) {
+        var s = String(v == null ? '' : v).replace(/"/g, '""').replace(/[\r\n]+/g, ' ');
+        return /[",]/.test(s) ? '"' + s + '"' : s;
+      }
+      var st = Store.state();
+      var lines = [];
+      lines.push('== 会话 ==');
+      lines.push('会话ID,标题,意图,状态,消息数,满意度,NPS,情绪,VIP,标签,创建时间,更新时间');
+      st.conversations.forEach(function (c) {
+        lines.push([
+          c.id, c.title, c.intent, c.status, (c.messages || []).length,
+          c.rating ? c.rating.score : '', c.nps || '', c.mood || 3, c.vip ? '是' : '否',
+          (c.tags || []).join(' '), new Date(c.createdAt).toISOString(), new Date(c.updatedAt).toISOString()
+        ].map(csvCell).join(','));
+      });
+      lines.push('');
+      lines.push('== 工单 ==');
+      lines.push('工单ID,关联会话,原因,意图,状态,创建时间,解决时间,备注');
+      st.handoffs.forEach(function (h) {
+        lines.push([h.id, h.conversationId, h.reason, h.intent, h.status,
+          new Date(h.createdAt).toISOString(), h.resolvedAt ? new Date(h.resolvedAt).toISOString() : '', h.note || ''].map(csvCell).join(','));
+      });
+      /* 加 BOM 保证 Excel 识别 UTF-8 中文 */
+      var blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'tianyi-agent-export-' + U.formatDate(Date.now()) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      U.toast('CSV 已导出（会话 ' + st.conversations.length + ' 条 / 工单 ' + st.handoffs.length + ' 个）', 'success');
     });
 
     // conversations
@@ -1062,10 +1206,17 @@
 
     // handoffs
     el('handoffFilter').addEventListener('change', renderHandoffs);
+    el('autoRouteBtn').addEventListener('click', function () {
+      var n = Store.autoRouteUnassigned();
+      render();
+      U.toast(n ? '已自动分配 ' + n + ' 条等待会话' : '没有待分配的会话（或坐席未配置技能）', n ? 'success' : 'info');
+    });
     el('handoffTable').addEventListener('click', function (e) {
       var b = e.target.closest('[data-hact]'); if (!b) return;
-      if (b.getAttribute('data-hact') === 'view') openConvDrawer(b.getAttribute('data-id'));
-      else openResolveModal(b.getAttribute('data-id'));
+      var act = b.getAttribute('data-hact'), id = b.getAttribute('data-id');
+      if (act === 'view') openConvDrawer(id);
+      else if (act === 'accept') { Store.setHandoffStatus(id, 'processing'); renderHandoffs(); U.toast('工单已开始处理', 'success'); }
+      else openResolveModal(id);
     });
 
     // FAQ
@@ -1101,6 +1252,10 @@
     });
     el('saveLlmBtn').addEventListener('click', function () {
       Store.updateLlm(readLlmForm());
+      Store.updateSettings({
+        llm: Object.assign({}, Store.state().settings.llm, { translate: el('llmTranslate').checked }),
+        prompt: { system: el('llmPromptTemplate').value }
+      });
       U.toast('模型设置已保存', 'success');
       el('llmTestResult').innerHTML = '<span class="muted">当前状态：' + (Engine.llmReady() ? '<b style="color:var(--jade)">已启用</b>' : '未启用或信息不完整') + '</span>';
     });
@@ -1187,6 +1342,29 @@
 
     // bot simulation
     el('simRunBtn').addEventListener('click', runSim);
+    el('multiTurnBtn').addEventListener('click', function () {
+      var scripts = String(el('multiTurnInput').value || '').split(/\r?\n/).map(function (line) {
+        var p = line.split('|').map(function (x) { return x.trim(); });
+        if (!p[0]) return null;
+        var sc = { id: p[0], turns: (p[1] || '').split(';;').map(function (x) { return x.trim(); }).filter(Boolean) };
+        if (p[2] && p[2] !== '-') sc.expectIntent = p[2];
+        if (p[3] && p[3] !== '-') sc.expectFinalHandoff = p[3] === 'true';
+        return sc;
+      }).filter(function (x) { return x && x.turns.length; });
+      var rep = Engine.runMultiTurnTest(scripts);
+      if (!rep) { U.toast('请先填写多轮脚本', 'warn'); return; }
+      var badge = rep.decision === 'pass' ? '<span class="badge green">全部通过</span>' : '<span class="badge amber">' + (rep.total - rep.passed) + ' 条未通过</span>';
+      var ciText = rep.confidence ? '[' + (rep.confidence.low * 100).toFixed(0) + '%, ' + (rep.confidence.high * 100).toFixed(0) + '%]' : '—';
+      var html = '<div style="margin-bottom:8px">' + badge + ' · 通过 ' + rep.passed + '/' + rep.total + '（Wilson 95% CI：' + ciText + '）</div>';
+      html += '<div class="table-wrap"><table class="data"><thead><tr><th>脚本</th><th>轮次链路</th><th>校验</th><th>结论</th></tr></thead><tbody>' +
+        rep.results.map(function (r) {
+          var chain = r.turns.map(function (t) { return t.turn + '. ' + esc(t.input) + ' → ' + t.intent + (t.handoff ? ' (转人工)' : ''); }).join('<br>');
+          var checks = Object.keys(r.checks).map(function (k) { return k + ':' + (r.checks[k] ? '✓' : '✗'); }).join(' ') || '—';
+          return '<tr><td class="td-strong">' + esc(r.id) + '</td><td>' + chain + '</td><td>' + esc(checks) + '</td><td>' +
+            (r.verdict === 'pass' ? '<span class="badge green">通过</span>' : '<span class="badge amber">未过</span>') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+      el('multiTurnResult').innerHTML = html;
+    });
     el('simInput').addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runSim(); }
     });
@@ -1199,7 +1377,7 @@
         return { key: d.key, weight: input ? clampNum(input.value, 0, 100, d.weight) : d.weight, critical: d.critical };
       });
       Store.updateSettings({
-        qa: { enabled: el('qaEnabled').checked, passScore: clampNum(el('qaPassScore').value, 1, 5, 3.5), dimensions: dims },
+        qa: { enabled: el('qaEnabled').checked, passScore: clampNum(el('qaPassScore').value, 1, 5, 3.5), sampleRate: clampNum(el('qaSampleRate').value, 0, 100, 100), reviewThreshold: clampNum(el('qaReviewThreshold').value, 1, 5, 2.5), dimensions: dims },
         privacy: { enabled: el('privacyEnabled').checked, mode: el('privacyMode').value || 'mask',
           rules: (Store.state().settings.privacy && Store.state().settings.privacy.rules) || ['phone', 'idcard', 'bankcard', 'email', 'order'],
           logRedactions: true }
@@ -1209,6 +1387,16 @@
     el('qaTable').addEventListener('click', function (e) {
       var b = e.target.closest('[data-qa-view]');
       if (b) { go('conversations'); openConvDrawer(b.getAttribute('data-qa-view')); }
+    });
+    el('saveGlossaryBtn').addEventListener('click', function () {
+      var gl = String(el('glossaryInput').value || '').split(/\r?\n/).map(function (line) {
+        var p = line.split('|');
+        if (!p[0] || !p[0].trim()) return null;
+        return { term: p[0].trim(), note: (p[1] || '').trim() };
+      }).filter(Boolean);
+      Store.updateSettings({ compliance: Object.assign({}, Store.state().settings.compliance, { glossary: gl }) });
+      renderQa();
+      U.toast('术语表已保存（' + gl.length + ' 条）', 'success');
     });
 
     // skill lab
@@ -1271,11 +1459,21 @@
     });
 
     // settings
+    if (el('abReportBtn')) el('abReportBtn').addEventListener('click', function () {
+      var rep = Engine.abReport();
+      var rows = rep.variants.map(function (v) {
+        return '<tr><td class="td-strong">' + esc(v.id) + '</td><td>' + v.convs + '</td>' +
+          '<td>' + (v.avgRating != null ? v.avgRating + ' ★' : '<span class="muted">—</span>') + '</td>' +
+          '<td>' + Math.round(v.resolveRate * 100) + '%</td>' +
+          '<td>' + Math.round(v.handoffRate * 100) + '%</td></tr>';
+      }).join('');
+      el('abReportResult').innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>变体</th><th>会话数</th><th>平均满意度</th><th>解决率</th><th>转人工率</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="hint" style="margin-top:6px">' + (rep.enoughSample ? '样本量充足，可参考对比结果。' : '⚠ 任一变体样本不足 30 条，差异可能只是随机波动，请勿据此下结论。') + '</div>';
+    });
     el('saveSettingsBtn').addEventListener('click', function () {
       Store.updateSettings({
         botName: el('setBotName').value.trim() || '天医小助手',
-        welcome: el('setWelcome').value.trim(),
-        language: el('setLanguage').value === 'en' ? 'en' : 'zh',
+        welcome: el('setWelcome').value.trim(),        language: el('setLanguage').value === 'en' ? 'en' : 'zh',
         proactive: {
           enabled: el('setProactiveEnabled').checked,
           seconds: U.clamp(Number(el('setProactiveSeconds').value) || 45, 10, 600),
@@ -1299,7 +1497,18 @@
         },
         voice: {
           enabled: el('setVoiceEnabled').checked,
-          lang: (Store.state().settings.voice && Store.state().settings.voice.lang) || 'zh-CN'
+          lang: (Store.state().settings.voice && Store.state().settings.voice.lang) || 'zh-CN',
+          speak: el('setSpeakEnabled') ? el('setSpeakEnabled').checked : false
+        },
+        satisfaction: {
+          autoInvite: el('setAutoInvite') ? el('setAutoInvite').checked : true
+        },
+        abTest: {
+          enabled: el('setAbEnabled') ? el('setAbEnabled').checked : false,
+          variants: [
+            { id: 'A', text: el('setAbA') ? el('setAbA').value.trim() : '', weight: 1 },
+            { id: 'B', text: el('setAbB') ? el('setAbB').value.trim() : '', weight: 1 }
+          ]
         },
         inbox: {
           queueEnabled: el('setQueueEnabled') ? el('setQueueEnabled').checked : true,
