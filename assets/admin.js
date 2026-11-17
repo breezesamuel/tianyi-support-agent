@@ -5,6 +5,11 @@
   var U = TY.utils, Store = TY.Store, Engine = TY.Engine;
   function el(id) { return document.getElementById(id); }
   function esc(v) { return U.escapeHtml(v); }
+  function clampNum(v, min, max, fallback) {
+    var n = Number(v);
+    if (!isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  }
   var page = 'overview';
   var PAGE_META = {
     overview: ['数据概览', '对话量、满意度、意图分布与人工工单一览'],
@@ -15,6 +20,7 @@
     simulate: ['机器人测试', '上线前模拟真实问题，回放意图→检索→回答→转人工全链路'],
     agents: ['坐席与快捷回复', '配置人工坐席、技能分配与标准话术'],
     audit: ['审计日志', '关键操作的可追溯记录'],
+    qa: ['质检评分', '按评分卡自动质检每条会话，监控真实解决率与敏感信息脱敏'],
     llm: ['模型接入', '配置可选的大模型接口，启用语义意图识别与生成式回答'],
     cloud: ['云端同步', '配置 Supabase，让会话数据跨设备存储'],
     settings: ['系统设置', '客服策略与本地数据管理']
@@ -75,7 +81,10 @@
       ['平均首响', fmtDuration(s.avgFirstResponseMs), '用户→机器人首次回复', 'accent'],
       ['平均解决时长', fmtDuration(s.avgResolutionMs), '仅统计已解决会话', ''],
       ['NPS', s.avgNps == null ? '—' : s.avgNps.toFixed(1), s.npsCount + ' 条推荐意愿', 'gold'],
-      ['合规预警', s.complianceFlags, '命中敏感表述的会话', s.complianceFlags ? 'warn' : '']
+      ['合规预警', s.complianceFlags, '命中敏感表述的会话', s.complianceFlags ? 'warn' : ''],
+      ['会话封闭率', s.totalConversations ? Math.round(s.trueMetrics.containmentRate * 100) + '%' : '—', '未转人工（可能含放弃）', ''],
+      ['已验证解决率', s.totalConversations ? Math.round(s.trueMetrics.verifiedResolutionRate * 100) + '%' : '—', '4 星以上或已解决且有引用', 'accent'],
+      ['质检通过率', s.qa.total ? Math.round(s.qa.passRate * 100) + '%' : '—', s.qa.total + ' 条已质检 · 均分 ' + (s.qa.total ? s.qa.avg.toFixed(1) : '—'), 'gold']
     ];
     el('statGrid').innerHTML = cards.map(function (c) {
       return '<div class="stat-card ' + c[3] + '"><div class="sc-label">' + c[0] + '</div><div class="sc-value">' + c[1] + '</div><div class="sc-foot">' + c[2] + '</div></div>';
@@ -463,6 +472,66 @@
     }).join('') : '<tr><td colspan="3"><div class="empty" style="padding:22px"><span class="empty-icon">≡</span>暂无操作记录</div></td></tr>';
   }
 
+  /* ---------- QA scorecard (第三轮) ---------- */
+  function scoreBadge(v) {
+    var color = v >= 2 ? 'var(--jade)' : (v === 1 ? 'var(--gold)' : 'var(--cinnabar)');
+    return '<b style="color:' + color + '">' + v + '</b>';
+  }
+  function renderQa() {
+    var s = Store.state().settings;
+    var qa = s.qa || {};
+    el('qaEnabled').checked = qa.enabled !== false;
+    el('qaPassScore').value = qa.passScore || 3.5;
+    el('privacyMode').value = (s.privacy && s.privacy.mode) || 'mask';
+    el('privacyEnabled').checked = !(s.privacy && s.privacy.enabled === false);
+    var dimCfg = qa.dimensions || TY.QA_DIMENSIONS.map(function (d) { return { key: d.key, weight: d.weight, critical: d.critical }; });
+    el('qaDimList').innerHTML = TY.QA_DIMENSIONS.map(function (d) {
+      var cfg = dimCfg.filter(function (x) { return x.key === d.key; })[0] || d;
+      return '<div class="switch-row" style="padding:8px 0;border-bottom:1px solid var(--line,#eee7d8)">' +
+        '<div class="sr-text"><b>' + esc(d.label) + '</b><small>' + esc(d.hint) + (d.critical ? ' · <b style="color:var(--cinnabar)">关键项</b>' : '') + '</small></div>' +
+        '<input class="input" type="number" min="0" max="100" value="' + (cfg.weight || 0) + '" data-qa-weight="' + d.key + '" style="width:70px" title="权重">' +
+        '</div>';
+    }).join('');
+
+    var q = Engine.qaStats();
+    el('qaOverview').innerHTML = [
+      ['已质检会话', q.total + ' 条'],
+      ['通过评分卡', q.pass + ' 条'],
+      ['质检通过率', Math.round(q.passRate * 100) + '%'],
+      ['平均质检分', q.total ? q.avg.toFixed(2) + ' / 5' : '—'],
+      ['合规项失败', (q.failures.compliance || 0) + ' 条'],
+      ['答案有据失败', (q.failures.grounded || 0) + ' 条']
+    ].map(function (r) { return '<span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span>'; }).join('');
+
+    var tm = Engine.trueMetrics();
+    function pct(v) { return Math.round(v * 100) + '%'; }
+    el('trueMetrics').innerHTML = [
+      ['会话封闭率', pct(tm.containmentRate) + '（无转人工）'],
+      ['已验证解决率', pct(tm.verifiedResolutionRate) + '（有评价或知识引用）'],
+      ['被高估部分', pct(tm.overstatement) + '（封闭率 − 已验证）'],
+      ['知识库无命中率', pct(tm.fallbackRate)],
+      ['7 日内重复咨询率', pct(tm.repeatContactRate)]
+    ].map(function (r) { return '<span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span>'; }).join('');
+
+    var rows = Store.state().conversations.filter(function (c) { return (c.messages || []).some(function (m) { return m.role === 'assistant'; }); })
+      .slice().sort(function (a, b) { return b.updatedAt - a.updatedAt; }).slice(0, 50);
+    el('qaDetailTag').textContent = q.total + ' 条';
+    el('qaTable').innerHTML = rows.length ? rows.map(function (c) {
+      var sc = c.qa || Engine.scoreConversation(c.id);
+      if (!sc) return '';
+      var verdict = sc.pass ? '<span class="badge green">通过</span>' : '<span class="badge red">未通过</span>';
+      return '<tr data-id="' + c.id + '">' +
+        '<td class="td-strong td-clip">' + esc(c.title) + '</td>' +
+        '<td><b>' + sc.score.toFixed(1) + '</b> / 5</td>' +
+        '<td>' + scoreBadge(sc.dims.grounded) + '</td>' +
+        '<td>' + scoreBadge(sc.dims.compliance) + '</td>' +
+        '<td>' + scoreBadge(sc.dims.resolution) + '</td>' +
+        '<td>' + scoreBadge(sc.dims.empathy) + '</td>' +
+        '<td>' + verdict + (sc.failedCritical.length ? ' <span class="muted">' + sc.failedCritical.map(function (k) { return TY.QA_DIMENSIONS.filter(function (d) { return d.key === k; })[0].label; }).join('/') + '</span>' : '') + '</td>' +
+        '<td><button class="btn btn-sm" data-qa-view="' + c.id + '">查看对话</button></td></tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty" style="padding:22px"><span class="empty-icon">◉</span>暂无可质检的会话</div></td></tr>';
+  }
+
   /* ---------- settings ---------- */
   function loadSettings() {
     var s = Store.state().settings;
@@ -483,6 +552,10 @@
     el('setProactiveEnabled').checked = !!pro.enabled;
     el('setProactiveSeconds').value = pro.seconds || 45;
     el('setProactiveText').value = pro.text || '';
+    var disc = s.disclosure || {};
+    el('setDisclosureEnabled').checked = disc.enabled !== false;
+    el('setDisclosureText').value = disc.text || '';
+    el('setVoiceEnabled').checked = !(s.voice && s.voice.enabled === false);
     var st = Store.state();
     el('dataConvCount').textContent = st.conversations.length;
     el('dataFaqCount').textContent = st.faqs.length;
@@ -550,6 +623,7 @@
     else if (page === 'simulate') { /* 测试页由按钮触发，不自动运行 */ }
     else if (page === 'agents') renderAgents();
     else if (page === 'audit') renderAudit();
+    else if (page === 'qa') renderQa();
     else if (page === 'llm') loadLlm();
     else if (page === 'cloud') loadCloud();
     else if (page === 'settings') loadSettings();
@@ -560,6 +634,9 @@
       var gaps = Store.knowledgeGaps().length;
       el('navGapCount').textContent = gaps;
       el('navGapCount').classList.toggle('hidden', !gaps);
+      var qaFail = Engine.qaStats().total - Engine.qaStats().pass;
+      el('navQaCount').textContent = qaFail;
+      el('navQaCount').classList.toggle('hidden', !qaFail);
     }
   }
 
@@ -758,6 +835,25 @@
     });
     el('simBatchBtn').addEventListener('click', batchSim);
 
+    // QA scorecard
+    el('saveQaBtn').addEventListener('click', function () {
+      var dims = TY.QA_DIMENSIONS.map(function (d) {
+        var input = document.querySelector('[data-qa-weight="' + d.key + '"]');
+        return { key: d.key, weight: input ? clampNum(input.value, 0, 100, d.weight) : d.weight, critical: d.critical };
+      });
+      Store.updateSettings({
+        qa: { enabled: el('qaEnabled').checked, passScore: clampNum(el('qaPassScore').value, 1, 5, 3.5), dimensions: dims },
+        privacy: { enabled: el('privacyEnabled').checked, mode: el('privacyMode').value || 'mask',
+          rules: (Store.state().settings.privacy && Store.state().settings.privacy.rules) || ['phone', 'idcard', 'bankcard', 'email', 'order'],
+          logRedactions: true }
+      });
+      U.toast('评分卡与脱敏策略已保存', 'success'); renderQa();
+    });
+    el('qaTable').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-qa-view]');
+      if (b) { go('conversations'); openConvDrawer(b.getAttribute('data-qa-view')); }
+    });
+
     // agents & canned
     el('routingEnabled').addEventListener('change', function (e) {
       Store.updateSettings({ routing: { enabled: e.target.checked, strategy: 'roundrobin' } });
@@ -812,6 +908,14 @@
         notice: {
           enabled: el('setNoticeEnabled').checked,
           text: el('setNoticeText').value.trim().slice(0, 200)
+        },
+        disclosure: {
+          enabled: el('setDisclosureEnabled').checked,
+          text: el('setDisclosureText').value.trim().slice(0, 300)
+        },
+        voice: {
+          enabled: el('setVoiceEnabled').checked,
+          lang: (Store.state().settings.voice && Store.state().settings.voice.lang) || 'zh-CN'
         }
       });
       U.toast('客服策略已保存', 'success'); loadSettings();
