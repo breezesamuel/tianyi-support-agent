@@ -166,8 +166,9 @@
       return '<li data-q="' + U.escapeHtml(f.question) + '"><span class="fs-idx">' + (i + 1) + '</span><span>' + U.escapeHtml(f.question) + '</span></li>';
     }).join('');
     var ready = Engine.llmReady();
+    var cloudOn = TY.Cloud && TY.Cloud.ready();
     el('statusPill').classList.toggle('off', !ready);
-    el('statusText').textContent = ready ? '大模型已接入 · ' + s.settings.llm.model : '本地知识库模式';
+    el('statusText').textContent = (ready ? '大模型已接入 · ' + s.settings.llm.model : '本地知识库模式') + (cloudOn ? ' · 云端同步' : '');
     el('engineNotice').innerHTML = ready
       ? '当前为<strong>大模型增强模式</strong>：意图识别与回答由 ' + U.escapeHtml(s.settings.llm.model) + ' 生成，并优先引用内置知识库；无法确认的信息将自动转人工。'
       : '当前为<strong>本地知识库模式</strong>：回答基于内置 FAQ 检索与规则引擎生成。可在管理后台的「模型接入」中启用大模型，获得更自然的语义理解与多轮推理。';
@@ -412,6 +413,13 @@
 
   function init() {
     bind();
+    window.addEventListener('tianyi:cloud-sync', function (e) {
+      if (!e.detail || e.detail.source !== 'pull') return;
+      if (currentId && !Store.getConversation(currentId)) newChat();
+      else if (currentId) selectConversation(currentId);
+      else renderAll();
+      U.toast('已同步云端最新数据');
+    });
     var saved = null;
     try { saved = localStorage.getItem(CURRENT_KEY); } catch (e) {}
     var convs = Store.state().conversations;
