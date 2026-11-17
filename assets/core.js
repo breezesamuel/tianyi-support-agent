@@ -80,6 +80,19 @@
       lastPushAt: 0,
       lastPullAt: 0,
       lastAppliedAt: 0
+    },
+    sla: {
+      enabled: true,
+      firstResponseMinutes: 5,
+      resolutionHours: 24
+    },
+    compliance: {
+      enabled: true,
+      terms: ['保证治愈', '根治', '包治', '无副作用', '替代医院', '不用就医', '药到病除', '绝对有效']
+    },
+    notice: {
+      enabled: false,
+      text: ''
     }
   };
 
@@ -171,6 +184,9 @@
           S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
           S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (parsed.settings && parsed.settings.llm) || {});
           S.settings.cloud = Object.assign({}, DEFAULT_SETTINGS.cloud, (parsed.settings && parsed.settings.cloud) || {});
+          S.settings.sla = Object.assign({}, DEFAULT_SETTINGS.sla, (parsed.settings && parsed.settings.sla) || {});
+          S.settings.compliance = Object.assign({}, DEFAULT_SETTINGS.compliance, (parsed.settings && parsed.settings.compliance) || {});
+          S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (parsed.settings && parsed.settings.notice) || {});
           S.handoffs = parsed.handoffs || [];
           return S;
         }
@@ -207,6 +223,9 @@
       S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), obj.settings || {});
       S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (obj.settings && obj.settings.llm) || {});
       S.settings.cloud = Object.assign({}, DEFAULT_SETTINGS.cloud, (obj.settings && obj.settings.cloud) || {});
+      S.settings.sla = Object.assign({}, DEFAULT_SETTINGS.sla, (obj.settings && obj.settings.sla) || {});
+      S.settings.compliance = Object.assign({}, DEFAULT_SETTINGS.compliance, (obj.settings && obj.settings.compliance) || {});
+      S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (obj.settings && obj.settings.notice) || {});
       if (!S.settings.llm.apiKey) S.settings.llm.apiKey = prevLlmKey;
       if (!S.settings.cloud.key) S.settings.cloud.key = prevCloudKey;
       S.handoffs = obj.handoffs || [];
@@ -219,13 +238,16 @@
       return copy;
     },
     mutate: function (fn) { var s = load(); var r = fn(s); save(); return r; },
-    newConversation: function (firstText) {
+    newConversation: function (firstText, meta) {
       return Store.mutate(function (s) {
         var c = {
           id: uid('conv'), title: (firstText || '新的咨询').slice(0, 20),
           createdAt: Date.now(), updatedAt: Date.now(),
           status: 'active', intent: 'other', messages: [],
-          rating: null, unresolvedTurns: 0, channel: 'web'
+          rating: null, unresolvedTurns: 0, channel: 'web',
+          tags: [], internalNotes: [], summary: '', nps: null,
+          firstResponseAt: null, resolvedAt: null,
+          visitor: Object.assign({ id: 'anon', ua: '', lang: '', ref: '', firstSeen: Date.now() }, meta || {})
         };
         s.conversations.unshift(c);
         return c;
@@ -270,8 +292,76 @@
         return true;
       });
     },
-    setRating: function (convId, score, comment) {
-      return Store.updateConversation(convId, { rating: { score: score, comment: comment || '', ts: Date.now() } });
+    setRating: function (convId, score, comment, nps) {
+      var num = nps == null || nps === '' ? null : clamp(Number(nps), 0, 10);
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        c.rating = { score: score, comment: comment || '', ts: Date.now() };
+        if (num != null) c.nps = num;
+        return c;
+      });
+    },
+    addTag: function (convId, tag) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        var t = String(tag || '').trim().slice(0, 12);
+        if (t && !c.tags) c.tags = [];
+        if (t && c.tags.indexOf(t) < 0) c.tags.push(t);
+        return c.tags;
+      });
+    },
+    removeTag: function (convId, tag) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        c.tags = (c.tags || []).filter(function (t) { return t !== tag; });
+        return c.tags;
+      });
+    },
+    addInternalNote: function (convId, text) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c || !String(text || '').trim()) return null;
+        if (!c.internalNotes) c.internalNotes = [];
+        var n = { id: uid('note'), text: String(text).trim(), ts: Date.now() };
+        c.internalNotes.unshift(n);
+        return n;
+      });
+    },
+    summarize: function (convId) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        var firstUser = (c.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+        var lastBot = (c.messages || []).filter(function (m) { return m.role === 'assistant'; }).slice(-1)[0];
+        var label = (INTENTS[c.intent] || INTENTS.other).label;
+        var parts = [];
+        if (firstUser) parts.push('用户咨询：' + String(firstUser.content).slice(0, 40));
+        parts.push('识别意图：' + label);
+        if (lastBot) parts.push('最新答复：' + String(lastBot.content).replace(/\[\[HANDOFF\]\]/g, '').replace(/\s+/g, ' ').slice(0, 56));
+        parts.push('消息数：' + (c.messages || []).length);
+        c.summary = parts.join('；');
+        return c.summary;
+      });
+    },
+    slaStatus: function (conv) {
+      var cfg = load().settings.sla || DEFAULT_SETTINGS.sla;
+      if (!cfg.enabled || !conv) return { label: '—', level: 'none' };
+      var fr = conv.firstResponseAt;
+      if (!fr) {
+        var u = (conv.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+        var a = (conv.messages || []).filter(function (m) { return m.role === 'assistant'; })[0];
+        if (u && a) fr = a.ts;
+      }
+      var frLimit = (cfg.firstResponseMinutes || 5) * 60000;
+      var overdueFr = fr && u ? (fr - u.ts) > frLimit : false;
+      var end = conv.resolvedAt || (conv.status === 'resolved' ? conv.updatedAt : Date.now());
+      var overResolve = (end - conv.createdAt) > (cfg.resolutionHours || 24) * 3600000 && conv.status !== 'resolved';
+      if (overdueFr || overResolve) return { label: 'SLA 超时', level: 'danger' };
+      if (conv.status === 'waiting_human') return { label: '待人工', level: 'warn' };
+      return { label: 'SLA 正常', level: 'ok' };
     },
     addHandoff: function (convId, reason, intent) {
       return Store.mutate(function (s) {
@@ -352,6 +442,17 @@
         });
       }
       var pending = s.handoffs.filter(function (h) { return h.status === 'pending'; }).length;
+      var frTimes = [], resolvedTimes = [], npsScores = [], flagged = 0;
+      var tagCounts = {};
+      convs.forEach(function (c) {
+        var firstUser = (c.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+        var firstBot = (c.messages || []).filter(function (m) { return m.role === 'assistant'; })[0];
+        if (firstUser && firstBot) frTimes.push(Math.max(0, firstBot.ts - firstUser.ts));
+        if (c.status === 'resolved' && c.resolvedAt) resolvedTimes.push(Math.max(0, c.resolvedAt - c.createdAt));
+        if (typeof c.nps === 'number') npsScores.push(c.nps);
+        if ((c.messages || []).some(function (m) { return m.complianceFlags && m.complianceFlags.length; })) flagged++;
+        (c.tags || []).forEach(function (t) { tagCounts[t] = (tagCounts[t] || 0) + 1; });
+      });
       return {
         totalConversations: convs.length,
         totalMessages: msgCount,
@@ -367,7 +468,13 @@
         handoffRate: convs.length ? s.handoffs.length / convs.length : 0,
         resolvedRate: convs.length ? (statusCount.resolved / convs.length) : 0,
         topFaqs: s.faqs.slice().sort(function (a, b) { return (b.hits || 0) - (a.hits || 0); }).slice(0, 5),
-        trend: trend
+        trend: trend,
+        avgFirstResponseMs: frTimes.length ? frTimes.reduce(function (a, b) { return a + b; }, 0) / frTimes.length : 0,
+        avgResolutionMs: resolvedTimes.length ? resolvedTimes.reduce(function (a, b) { return a + b; }, 0) / resolvedTimes.length : 0,
+        avgNps: npsScores.length ? npsScores.reduce(function (a, b) { return a + b; }, 0) / npsScores.length : null,
+        npsCount: npsScores.length,
+        complianceFlags: flagged,
+        tagCounts: tagCounts
       };
     }
   };
@@ -532,6 +639,13 @@
     ].join('\n');
   }
 
+  function scanCompliance(text) {
+    var cfg = load().settings.compliance || DEFAULT_SETTINGS.compliance;
+    if (!cfg.enabled) return [];
+    var s = String(text || '');
+    return (cfg.terms || []).filter(function (t) { return t && s.indexOf(t) >= 0; });
+  }
+
   function buildFallbackAnswer(query, retrieval, intent) {
     var hits = retrieval.hits;
     if (!hits.length) {
@@ -611,6 +725,9 @@
     S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), remote.settings || {});
     S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (remote.settings && remote.settings.llm) || {});
     S.settings.cloud = Object.assign({}, local.settings.cloud, (remote.settings && remote.settings.cloud) || {});
+    S.settings.sla = Object.assign({}, local.settings.sla || DEFAULT_SETTINGS.sla, (remote.settings && remote.settings.sla) || {});
+    S.settings.compliance = Object.assign({}, local.settings.compliance || DEFAULT_SETTINGS.compliance, (remote.settings && remote.settings.compliance) || {});
+    S.settings.notice = Object.assign({}, local.settings.notice || DEFAULT_SETTINGS.notice, (remote.settings && remote.settings.notice) || {});
     S.settings.llm.apiKey = llmKey;
     S.settings.cloud.key = cloudKey;
     S.handoffs = Array.isArray(remote.handoffs) ? remote.handoffs : (local.handoffs || []);
@@ -716,7 +833,8 @@
       llmStream: llmStream,
       classifyWithLlm: classifyWithLlm,
       buildSystemPrompt: buildSystemPrompt,
-      buildFallbackAnswer: buildFallbackAnswer
+      buildFallbackAnswer: buildFallbackAnswer,
+      scanCompliance: scanCompliance
     },
     utils: {
       uid: uid, escapeHtml: escapeHtml, pad: pad, formatTime: formatTime,
