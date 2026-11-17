@@ -357,6 +357,7 @@
 
   /* ---------- FAQ ---------- */
   function renderFaq() {
+    renderFaqDrafts();
     var kw = el('faqFilter').value.trim().toLowerCase();
     var cat = el('faqCategoryFilter').value;
     var list = Store.state().faqs.filter(function (f) {
@@ -638,6 +639,117 @@
         '<span class="muted"> · ' + esc(a.note) + '</span></span></div>';
     }).join('');
     el('a11yChecklist').innerHTML = rows + '<div class="muted" style="font-size:11px;margin-top:6px">' + esc(a11y.disclaimer) + '</div>';
+    // judge 配置
+    var j = Store.state().settings.judge || {};
+    el('judgeMinScore').value = typeof j.minScore === 'number' ? j.minScore : 7;
+    el('judgeModel').value = j.model || '';
+    // 用量与成本
+    renderUsage();
+  }
+
+  function renderUsage() {
+    var u = TY.Engine.usageSummary();
+    var fmt = function (n) { return n >= 10000 ? (n / 1000).toFixed(1) + 'k' : n; };
+    var cost = function (c) { return '¥' + (c >= 0.01 ? c.toFixed(2) : c.toFixed(4)); };
+    var est = u.today.estimatedCalls ? ' <span class="badge amber">含 ' + u.today.estimatedCalls + ' 次估算</span>' : '';
+    var budgetLine = u.budget > 0
+      ? '<span>单日预算</span><span>' + cost(u.today.cost) + ' / ¥' + u.budget + '（' + Math.round(u.budgetUsed * 100) + '%）' + (u.overBudget ? ' <span class="badge red">已超限</span>' : '') + '</span>'
+      : '<span>单日预算</span><span class="muted">未设置（不限额）</span>';
+    el('usagePanel').innerHTML =
+      '<span>今日调用</span><span>' + u.today.calls + ' 次' + est + '</span>' +
+      '<span>今日 tokens</span><span>入 ' + fmt(u.today.promptTokens) + ' / 出 ' + fmt(u.today.completionTokens) + '</span>' +
+      '<span>今日成本</span><span>' + cost(u.today.cost) + '</span>' +
+      '<span>近 30 天累计</span><span>' + u.week.calls + ' 次 · ' + cost(u.week.cost) + '</span>' +
+      budgetLine;
+    var s = Store.state().settings.llm || {};
+    el('setDailyBudget').value = s.dailyBudget || 0;
+    el('setPriceIn').value = typeof s.priceIn === 'number' ? s.priceIn : 2;
+    el('setPriceOut').value = typeof s.priceOut === 'number' ? s.priceOut : 8;
+  }
+
+  function runLlmReg() {
+    var E = TY.Engine;
+    if (!E.llmReady()) { U.toast('请先在「模型接入」启用并配置大模型 API Key', 'warn'); return; }
+    var cases = parseRegCases(el('regCases').value);
+    if (!cases.length) { U.toast('请先填写测试用例', 'warn'); return; }
+    // 保存 judge 配置
+    Store.updateSettings({ judge: Object.assign({}, Store.state().settings.judge, {
+      minScore: Number(el('judgeMinScore').value) || 7,
+      model: el('judgeModel').value.trim()
+    }) });
+    var btn = el('runLlmRegBtn');
+    btn.disabled = true; btn.textContent = '评测中…';
+    el('llmRegProgress').textContent = '准备评测（共 ' + cases.length + ' 条用例，每条需生成回答 + 评审两次调用）…';
+    var t0 = Date.now();
+    E.runLlmRegression(cases, function (done, total, r) {
+      var score = r.judge ? '，评分 ' + r.judge.score : '';
+      el('llmRegProgress').textContent = '进度 ' + done + '/' + total + '：' + (r.input || '').slice(0, 16) + '… → ' + r.verdict + score;
+    }).then(function (rep) {
+      btn.disabled = false; btn.textContent = '运行 LLM 真实评测';
+      if (!rep) return;
+      var badge = rep.decision === 'pass' ? 'green' : (rep.decision === 'fail' ? 'red' : 'amber');
+      var ci = rep.confidence;
+      var html = '<div class="notice-card" style="border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7">' +
+        '<b>结论：</b><span class="badge ' + badge + '">' + esc(rep.decision) + '</span> · ' +
+        '通过 ' + rep.passed + '/' + rep.total + ' · 评审模型 <b>' + esc(rep.judgeModel) + '</b> · 评分卡 ' + esc(rep.rubricVersion) +
+        (rep.selfJudgedAny ? ' <span class="badge amber">含自评（生成与评审同模型，存在自增强偏见风险）</span>' : ' <span class="badge green">生成/评审模型分离</span>') + '<br>' +
+        (ci ? '<b>Wilson 95% 置信区间：</b>[' + (ci.low * 100).toFixed(1) + '%, ' + (ci.high * 100).toFixed(1) + '%]' : '') +
+        ' · 耗时 ' + Math.round((Date.now() - t0) / 1000) + 's</div>';
+      html += '<div class="table-wrap" style="margin-top:10px"><table class="data"><thead><tr><th>用例</th><th>结论</th><th>评分</th><th>回答摘要 / 问题</th></tr></thead><tbody>' +
+        rep.results.map(function (x) {
+          if (x.verdict === 'error') return '<tr><td class="td-strong">' + esc(x.input) + '</td><td><span class="badge gray">调用失败</span></td><td>—</td><td class="muted">' + esc(x.error) + '</td></tr>';
+          var vBadge = x.verdict === 'pass' ? '<span class="badge green">通过</span>' :
+            (x.verdict === 'critical-fail' ? '<span class="badge red">关键失败</span>' : '<span class="badge amber">未达标</span>');
+          var jd = x.judge || {};
+          var dims = jd.dimensions ? ['准' + jd.dimensions.accuracy, '安' + jd.dimensions.safety, '助' + jd.dimensions.helpfulness, '达' + jd.dimensions.tone].join(' ') : '';
+          var detail = esc((x.answer || '').slice(0, 60)) + (jd.issues && jd.issues.length ? '<br><span class="muted">问题：' + esc(jd.issues.join('；')) + '</span>' : '');
+          return '<tr><td class="td-strong">' + esc(x.input) + '</td><td>' + vBadge + '</td><td>' + (jd.score != null ? '<b>' + jd.score + '</b><div class="muted" style="font-size:11px">' + dims + '</div>' : '—') + '</td><td style="max-width:280px">' + detail + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+      el('llmRegResult').innerHTML = html;
+      renderUsage();
+      U.toast('LLM 真实评测完成：' + rep.decision, rep.decision === 'pass' ? 'success' : 'warn');
+    }).catch(function (e) {
+      btn.disabled = false; btn.textContent = '运行 LLM 真实评测';
+      el('llmRegProgress').textContent = '';
+      U.toast('评测失败：' + String(e && e.message || e).slice(0, 80), 'error');
+    });
+  }
+
+  /* ---------- 知识缺口草稿审核 ---------- */
+  function renderFaqDrafts() {
+    var pending = Store.faqDrafts('pending');
+    el('faqDraftCount').textContent = pending.length + ' 条待审核';
+    el('faqDraftTable').innerHTML = pending.length ? pending.map(function (d) {
+      return '<tr data-draft="' + d.id + '"><td class="td-strong td-clip" title="' + esc(d.question) + '">' + esc(d.question) + '</td>' +
+        '<td>' + d.count + '</td><td>' + esc(TY.intentLabel(d.intent)) + '</td><td><span class="badge amber">待审核</span></td>' +
+        '<td style="white-space:nowrap"><button class="btn btn-sm" data-dact="promote" data-id="' + d.id + '">审核入库</button> ' +
+        '<button class="btn btn-sm btn-danger" data-dact="dismiss" data-id="' + d.id + '">忽略</button></td></tr>';
+    }).join('') : '<tr><td colspan="5"><div class="empty"><span class="empty-icon">◇</span>暂无待审核草稿，可点击上方按钮从知识缺口生成</div></td></tr>';
+  }
+
+  function openDraftPromoteModal(id) {
+    var d = Store.faqDrafts().filter(function (x) { return x.id === id; })[0];
+    if (!d) return;
+    var cats = TY.FAQ_CATEGORIES.map(function (c) { return '<option ' + (d.category === c ? 'selected' : '') + '>' + c + '</option>'; }).join('');
+    var intents = Object.keys(TY.INTENTS).map(function (k) { return '<option value="' + k + '" ' + (d.intent === k ? 'selected' : '') + '>' + TY.INTENTS[k].label + '</option>'; }).join('');
+    openModal('<h3>审核知识缺口草稿</h3>' +
+      '<div class="muted" style="font-size:12px;margin-bottom:10px">该提问出现 ' + d.count + ' 次且知识库未命中。补写标准答案后入库，同类提问将可直接自动解答。</div>' +
+      '<div class="field"><label>问题</label><input class="input" id="draftQ" value="' + esc(d.question) + '"></div>' +
+      '<div class="field"><label>标准答案</label><textarea class="textarea" id="draftA" placeholder="补写客服标准回复"></textarea></div>' +
+      '<div class="settings-grid" style="gap:10px">' +
+        '<div class="field" style="margin:0"><label>分类</label><select class="select" id="draftC">' + cats + '</select></div>' +
+        '<div class="field" style="margin:0"><label>关联意图</label><select class="select" id="draftI">' + intents + '</select></div>' +
+      '</div>' +
+      '<div class="modal-foot"><button class="btn" data-modal-close>取消</button><button class="btn btn-primary" id="draftSave">入库</button></div>');
+    el('draftSave').onclick = function () {
+      var f = Store.promoteFaqDraft(d.id, {
+        question: el('draftQ').value.trim(),
+        answer: el('draftA').value.trim(),
+        category: el('draftC').value
+      });
+      if (!f) { U.toast('答案不能为空', 'warn'); return; }
+      closeModal(); renderFaq(); renderFaqDrafts(); U.toast('已入库知识库，来源：缺口草稿', 'success');
+    };
   }
 
   function parseRegCases(text) {
@@ -1101,6 +1213,30 @@
 
     // skill lab
     el('runRegBtn').addEventListener('click', runReg);
+    el('runLlmRegBtn').addEventListener('click', runLlmReg);
+    el('saveUsageBtn').addEventListener('click', function () {
+      Store.updateSettings({ llm: Object.assign({}, Store.state().settings.llm, {
+        dailyBudget: Math.max(0, Number(el('setDailyBudget').value) || 0),
+        priceIn: Math.max(0, Number(el('setPriceIn').value) || 0),
+        priceOut: Math.max(0, Number(el('setPriceOut').value) || 0)
+      }) });
+      renderUsage();
+      U.toast('预算与单价已保存', 'success');
+    });
+    el('genFaqDraftBtn').addEventListener('click', function () {
+      var added = Store.createFaqDrafts();
+      renderFaqDrafts();
+      U.toast(added.length ? '已从知识缺口生成 ' + added.length + ' 条草稿' : '没有新的缺口（或均与现有知识重复）', added.length ? 'success' : 'info');
+    });
+    el('faqDraftTable').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-dact]');
+      if (!b) return;
+      var id = b.getAttribute('data-id'), act = b.getAttribute('data-dact');
+      if (act === 'promote') openDraftPromoteModal(id);
+      else if (act === 'dismiss' && confirm('忽略这条缺口草稿？之后同类提问不会再自动生成。')) {
+        Store.dismissFaqDraft(id); renderFaqDrafts(); U.toast('草稿已忽略');
+      }
+    });
 
     // agents & canned
     el('routingEnabled').addEventListener('change', function (e) {
