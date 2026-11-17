@@ -12,6 +12,26 @@
   var pendingScore = 0;
   var searchTerm = '';
 
+  function buildSummaryText(conv, intentKey, answer) {
+    var firstUser = (conv.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+    var label = (TY.INTENTS[intentKey] || TY.INTENTS.other).label;
+    var parts = [];
+    if (firstUser) parts.push('用户咨询：' + String(firstUser.content).slice(0, 40));
+    parts.push('识别意图：' + label);
+    if (answer) parts.push('最新答复：' + String(answer).replace(/\[\[HANDOFF\]\]/g, '').replace(/\s+/g, ' ').slice(0, 56));
+    parts.push('消息数：' + ((conv.messages || []).length + 1));
+    return parts.join('；');
+  }
+
+  function visitorMeta() {
+    var id = '';
+    try {
+      id = localStorage.getItem('tianyi_visitor_v1') || '';
+      if (!id) { id = U.uid('visitor'); localStorage.setItem('tianyi_visitor_v1', id); }
+    } catch (e) { id = U.uid('visitor'); }
+    return { id: id, ua: navigator.userAgent || '', lang: navigator.language || '', ref: document.referrer || '' };
+  }
+
   var QUICK = [
     '如何查询我的订单状态？',
     '怎么申请退款？多久到账？',
@@ -76,6 +96,10 @@
     var conv = currentConv();
     var inner = el('msgListInner');
     var html = welcomeHtml();
+    var notice = Store.state().settings.notice;
+    if (notice && notice.enabled && notice.text) {
+      html += '<div class="notice-card" style="margin:0 0 14px">' + U.escapeHtml(notice.text) + '</div>';
+    }
     if (conv && conv.messages && conv.messages.length) {
       var lastBotIndex = -1;
       conv.messages.forEach(function (m, i) { if (m.role === 'assistant') lastBotIndex = i; });
@@ -94,6 +118,7 @@
         ? '<span class="intent-tag" style="color:' + intent.color + '">' + intent.label + (m.intentSource === 'llm' ? ' · AI' : '') + '</span>'
         : '') +
       (m.engine ? '<span>' + U.escapeHtml(m.engine) + '</span>' : '') +
+      (m.complianceFlags && m.complianceFlags.length ? '<span class="intent-tag" style="color:#b4453c">合规标记</span>' : '') +
       '</div>';
     var sources = (m.sources && m.sources.length)
       ? '<details class="sources"><summary>参考知识库 ' + m.sources.length + ' 条</summary><ul>' +
@@ -116,7 +141,8 @@
             return '<button class="star ' + (n <= pendingScore ? 'on' : '') + '" data-score="' + n + '" title="' + n + ' 星">★</button>';
           }).join('') + '</div>' +
           '<input class="input" data-rating-comment placeholder="补充说明（选填）">' +
-          '<button class="btn btn-sm" data-rating-submit>提交评价</button>' +
+          '<input class="input" data-rating-nps type="number" min="0" max="10" placeholder="推荐意愿 0-10（选填）" style="margin-top:6px">' +
+          '<button class="btn btn-sm" data-rating-submit style="margin-top:6px">提交评价</button>' +
         '</div>';
       }
     }
@@ -217,7 +243,7 @@
 
   function manualHandoff() {
     if (!currentId) {
-      var c = Store.newConversation('转人工请求');
+      var c = Store.newConversation('转人工请求', visitorMeta());
       currentId = c.id;
     }
     var conv = currentConv();
@@ -234,7 +260,7 @@
     text = String(text || '').trim();
     if (!text || busy) return;
     if (!currentId) {
-      var created = Store.newConversation(text);
+      var created = Store.newConversation(text, visitorMeta());
       currentId = created.id;
       try { localStorage.setItem(CURRENT_KEY, currentId); } catch (e) {}
     }
@@ -320,15 +346,22 @@
     var row = el('streamingRow');
     if (row) row.remove();
 
-    Store.addMessage(conv.id, {
+    var complianceFlags = Engine.scanCompliance(clean);
+    var botMsg = Store.addMessage(conv.id, {
       role: 'assistant', content: clean,
       intent: intent.key,
       engine: llmUsed ? '大模型 + 知识库' : '知识库规则引擎',
       sources: retrieval.hits.map(function (h) { return { question: h.faq.question, score: h.score, id: h.faq.id }; }),
       handoff: (wantsHandoff ? (reason || '系统判断需要人工介入') : ''),
-      score: retrieval.bestScore
+      score: retrieval.bestScore,
+      complianceFlags: complianceFlags
     });
-    Store.updateConversation(conv.id, { unresolvedTurns: unresolved });
+    if (complianceFlags.length) U.toast('合规提醒：本次回答命中敏感表述，已标记供质检复核', 'warn');
+    Store.updateConversation(conv.id, {
+      unresolvedTurns: unresolved,
+      firstResponseAt: (conv.firstResponseAt || (botMsg && botMsg.ts) || Date.now()),
+      summary: buildSummaryText(conv, intent.key, clean)
+    });
     if (wantsHandoff) doHandoff(conv, reason || '系统判断需要人工介入', intent.key);
 
     busy = false;
@@ -398,7 +431,8 @@
         if (e.target.closest('[data-rating-submit]')) {
           if (!pendingScore) { U.toast('请先选择星级', 'warn'); return; }
           var comment = box.querySelector('[data-rating-comment]').value.trim();
-          Store.setRating(currentId, pendingScore, comment);
+          var nps = box.querySelector('[data-rating-nps]').value.trim();
+          Store.setRating(currentId, pendingScore, comment, nps);
           U.toast('感谢您的评价！', 'success');
           renderAll();
         }
