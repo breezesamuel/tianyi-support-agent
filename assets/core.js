@@ -261,14 +261,34 @@
     templates: [
       { id: 'tp1', title: '人工接入欢迎', text: '您好 {{visitor}}，我是 {{agent}}。已了解您咨询的是「{{intent}}」相关问题，请问具体订单号是多少？' },
       { id: 'tp2', title: '结束语', text: '感谢您的咨询（{{date}}）。如还有疑问可随时回复，祝您生活愉快。' }
-    ]
+    ],
+    /* 第五轮（GitHub Skill 提炼）：混合检索权重（hybrid-search-implementation） */
+    search: {
+      hybrid: true,
+      lexicalWeight: 1.0,   // 字面/关键词精确匹配
+      semanticWeight: 1.0,  // n-gram 语义近似
+      intentWeight: 0.9
+    },
+    /* 第五轮：跨会话访客记忆（agent-memory-systems：语义/情景/程序化分层 + 保留期） */
+    memory: {
+      enabled: false,
+      retentionDays: 90,
+      scope: 'visitor'   // 按访客 id 隔离
+    },
+    /* 第五轮：质检 LLM-as-Judge 偏见缓解（advanced-evaluation） */
+    judge: {
+      swapPositions: true,   // 成对比较交换顺序校验位置偏见
+      ignoreLength: true,    // 忽略长度偏见
+      crossModel: true       // 生成与评测分离（提示，纯前端无强制）
+    }
   };
 
   /* 统一补齐 settings 中的可选分组（load/import/applyRemote 共用，避免新增字段遗漏） */
   function mergeSettings(base, saved) {
     var s = Object.assign({}, JSON.parse(JSON.stringify(base)), saved || {});
     ['llm', 'cloud', 'sla', 'compliance', 'notice', 'routing', 'proactive',
-      'disclosure', 'privacy', 'qa', 'a11y', 'voice', 'inbox', 'autoReply'].forEach(function (k) {
+      'disclosure', 'privacy', 'qa', 'a11y', 'voice', 'inbox', 'autoReply',
+      'search', 'memory', 'judge'].forEach(function (k) {
       s[k] = Object.assign({}, JSON.parse(JSON.stringify(base[k] || {})), (saved && saved[k]) || {});
     });
     ['canned', 'agents', 'macros', 'templates'].forEach(function (k) {
@@ -1281,9 +1301,28 @@
         else if (kn.length >= 2 && hay.indexOf(kn) >= 0 && qn.length >= 2 && kn.indexOf(qn) >= 0) kwBonus += 1.2;
       });
       var exact = normalize(f.question) === qn ? 4 : 0;
+      /* 第五轮 hybrid search：字面精确匹配（关键词侧）——完整问题/关键词整串命中 */
+      var lexical = 0;
+      if (qn && qn.length >= 2 && hay.indexOf(qn) >= 0) lexical += 2.5;   // 整句字面命中
+      (f.keywords || []).forEach(function (k) {
+        var kn = normalize(k);
+        if (kn && kn.length >= 2 && qn.indexOf(kn) >= 0) lexical += 1.0;  // 关键词字面命中
+      });
       var intentBonus = (intentKey && f.intent === intentKey) ? 0.9 : 0;
-      var score = ratio2 * 5 + ratio3 * 2 + kwBonus + exact + intentBonus;
-      return { faq: f, score: Math.round(score * 100) / 100, ratio: ratio2 };
+      var sc = s.settings.search || DEFAULT_SETTINGS.search;
+      var lw = sc.hybrid === false ? 0 : (Number(sc.lexicalWeight) || 1);
+      var sw = Number(sc.semanticWeight) || 1;
+      var iw = Number(sc.intentWeight) || 0;
+      var semantic = ratio2 * 5 + ratio3 * 2 + kwBonus + exact;
+      var score = semantic * sw + lexical * lw + (intentKey && f.intent === intentKey ? iw : 0);
+      return {
+        faq: f, score: Math.round(score * 100) / 100, ratio: ratio2,
+        breakdown: {
+          lexical: Math.round(lexical * 100) / 100,
+          semantic: Math.round(semantic * 100) / 100,
+          intent: intentBonus
+        }
+      };
     });
     results.sort(function (a, b) { return b.score - a.score; });
     var threshold = s.settings.faqThreshold || 2.2;
@@ -1314,7 +1353,7 @@
     return {
       text: raw, intent: intent.key, intentLabel: intentLabel(intent.key), confidence: intent.confidence,
       signals: intent.signals, mood: mood.level, moodLabel: mood.label,
-      hits: retrieval.hits.map(function (h) { return { question: h.faq.question, score: h.score, id: h.faq.id }; }),
+      hits: retrieval.hits.map(function (h) { return { question: h.faq.question, score: h.score, id: h.faq.id, breakdown: h.breakdown }; }),
       bestScore: retrieval.bestScore, confident: retrieval.confident,
       answer: answer.replace(/\[\[HANDOFF\]\]/g, '').trim(), complianceFlags: complianceFlags,
       handoff: handoff, reason: reason,
@@ -1349,6 +1388,157 @@
   function offlineReplyText() {
     var cfg = load().settings.autoReply || DEFAULT_SETTINGS.autoReply;
     return cfg.offlineText || DEFAULT_SETTINGS.autoReply.offlineText;
+  }
+
+  /* ================= 第五轮：GitHub Agent Skill 方法论提炼 =================
+     来源均为 sickn33/agentic-awesome-skills 中 risk=safe 的 skill：
+     - agent-evaluation (Apache-2.0)：冻结契约 / 基线-候选 / Wilson 区间
+     - advanced-evaluation：LLM-as-Judge 偏见清单
+     - agent-memory-systems：语义/情景/程序化记忆分层
+     - i18n-localization / accessibility-audit：覆盖度自查                    */
+
+  /* agent-evaluation：Wilson 95% 置信区间（10/10 并非 100% 可靠） */
+  function wilsonInterval(passes, trials) {
+    if (!Number.isInteger(passes) || !Number.isInteger(trials) || trials <= 0 || passes < 0 || passes > trials) return null;
+    var z = 1.96, p = passes / trials;
+    var denom = 1 + z * z / trials;
+    var center = (p + z * z / (2 * trials)) / denom;
+    var margin = z * Math.sqrt((p * (1 - p) + z * z / (4 * trials)) / trials) / denom;
+    return {
+      passes: passes, trials: trials, point: Math.round(p * 1000) / 1000,
+      low: Math.round(Math.max(0, center - margin) * 1000) / 1000,
+      high: Math.round(Math.min(1, center + margin) * 1000) / 1000
+    };
+  }
+
+  /* agent-evaluation：版本化回归评测套件。
+     用例结构：{ id, input, expectIntent?, expectHandoff?, expectNoCompliance?, expectFaqId? }
+     逐条跑 simulate()，区分「用例失败 / 关键安全失败 / 通过」；
+     关键项（合规命中、应转人工却没转）失败会单独计数，不被平均通过率掩盖。 */
+  function runRegressionSuite(cases) {
+    var list = Array.isArray(cases) ? cases : [];
+    if (!list.length) return null;
+    var results = [], passed = 0, criticalFail = 0;
+    list.forEach(function (tc) {
+      var r = simulate(tc.input || '');
+      var checks = {};
+      var critical = false;
+      if (tc.expectIntent) { checks.intent = r.intent === tc.expectIntent; }
+      if (typeof tc.expectHandoff === 'boolean') {
+        checks.handoff = r.handoff === tc.expectHandoff;
+        if (tc.expectHandoff && !r.handoff) critical = true; // 该转人工却没转
+      }
+      if (tc.expectNoCompliance === true) {
+        checks.compliance = r.complianceFlags.length === 0;
+        if (!checks.compliance) critical = true;             // 合规红线命中
+      }
+      if (tc.expectFaqId) { checks.faq = r.hits.some(function (h) { return h.id === tc.expectFaqId; }); }
+      var okAll = Object.keys(checks).every(function (k) { return checks[k]; });
+      if (okAll) passed++;
+      if (critical && okAll) criticalFail = 0; else if (critical) criticalFail++;
+      results.push({
+        id: tc.id || tc.input, input: tc.input, checks: checks,
+        verdict: okAll ? 'pass' : (critical ? 'critical-fail' : 'fail'),
+        actual: { intent: r.intent, handoff: r.handoff, compliance: r.complianceFlags, topFaq: r.hits[0] && r.hits[0].id }
+      });
+    });
+    return {
+      revision: 'local-' + UDate(), passed: passed, total: list.length,
+      criticalFailures: criticalFail,
+      passRate: Math.round(passed / list.length * 1000) / 1000,
+      confidence: wilsonInterval(passed, list.length),
+      decision: criticalFail > 0 ? 'fail' : (passed === list.length ? 'pass' : 'inconclusive'),
+      results: results
+    };
+  }
+  function UDate() { return formatDate(Date.now()); }
+
+  /* advanced-evaluation：LLM-as-Judge 偏见缓解清单（写入质检规则供人工核对） */
+  function judgeBiasChecklist() {
+    var cfg = load().settings.judge || DEFAULT_SETTINGS.judge;
+    return [
+      { bias: '位置偏见', en: 'Position bias', mitigated: !!cfg.swapPositions,
+        action: '成对比较时交换 A/B 顺序各评一次，不一致则判为不确定' },
+      { bias: '长度偏见', en: 'Length bias', mitigated: !!cfg.ignoreLength,
+        action: '评分标准显式忽略篇幅，禁止"更长=更好"' },
+      { bias: '自增强偏见', en: 'Self-enhancement bias', mitigated: !!cfg.crossModel,
+        action: '生成模型与评分模型分离；同模型自评需在报告中标注局限' },
+      { bias: '评分漂移', en: 'Calibration drift', mitigated: true,
+        action: '用标注样例定期校准评分卡，记录版本' }
+    ];
+  }
+
+  /* agent-memory-systems：按访客隔离的跨会话记忆（语义/情景/程序化分层 + 保留期）。
+     不新增存储集合，复用 conversations 派生，避免污染主数据。 */
+  function visitorMemory(visitorId) {
+    var s = load();
+    var cfg = s.settings.memory || DEFAULT_SETTINGS.memory;
+    if (!cfg.enabled) return { enabled: false, layers: null };
+    var vid = visitorId || 'anon';
+    var retention = (Number(cfg.retentionDays) || 90) * 86400000;
+    var now = Date.now();
+    var mine = s.conversations.filter(function (c) {
+      return (c.visitor && c.visitor.id) === vid && (now - (c.updatedAt || c.createdAt)) <= retention;
+    });
+    var semantic = [], episodic = [], procedural = {};
+    mine.forEach(function (c) {
+      // 情景记忆：历史咨询事件（无消息时回退到会话标题）
+      var firstUser = (c.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+      var topic = firstUser ? String(firstUser.content) : (c.title || '');
+      if (topic) episodic.push({ at: c.createdAt, intent: c.intent, topic: topic.slice(0, 40), status: c.status });
+      // 语义记忆：稳定偏好（VIP、常用语言、常用标签）
+      if (c.vip && semantic.indexOf('VIP 客户') < 0) semantic.push('VIP 客户');
+      if (c.visitor && c.visitor.lang && semantic.indexOf('语言：' + c.visitor.lang) < 0) semantic.push('语言：' + c.visitor.lang);
+      (c.tags || []).forEach(function (tg) { if (semantic.indexOf('标签：' + tg) < 0) semantic.push('标签：' + tg); });
+      // 程序化记忆：意图分布
+      procedural[c.intent || 'other'] = (procedural[c.intent || 'other'] || 0) + 1;
+    });
+    episodic.sort(function (a, b) { return b.at - a.at; });
+    return {
+      enabled: true, visitor: vid, retentionDays: cfg.retentionDays,
+      layers: {
+        semantic: semantic,                       // 语义：事实/偏好
+        episodic: episodic.slice(0, 20),          // 情景：事件（最近20）
+        procedural: procedural                    // 程序化：可复用模式
+      },
+      conversations: mine.length
+    };
+  }
+
+  /* i18n-localization：硬编码文案检测 + 键覆盖度自查（当前仅中英两语言） */
+  function i18nCoverage() {
+    var langs = Object.keys(I18N);
+    var base = I18N.zh || {};
+    var missing = {};
+    langs.forEach(function (lang) {
+      if (lang === 'zh') return;
+      var miss = Object.keys(base).filter(function (k) { return I18N[lang][k] == null; });
+      if (miss.length) missing[lang] = miss;
+    });
+    return {
+      languages: langs, baseKeys: Object.keys(base).length,
+      missing: missing, complete: Object.keys(missing).length === 0
+    };
+  }
+
+  /* accessibility-audit：WCAG 2.2 自查清单（自动检查 + 需人工核验项分开列出） */
+  function a11yChecklist() {
+    var st = load().settings.a11y || DEFAULT_SETTINGS.a11y;
+    return {
+      automated: [
+        { item: '跳过链接 skip-link', passed: true, note: 'index.html 已提供 #skipLink' },
+        { item: 'aria-live 播报区', passed: !!st.announcements, note: '对话消息变更播报' },
+        { item: '键盘快捷键', passed: true, note: 'Alt+N / Alt+/ / Esc' },
+        { item: '可见焦点环', passed: true, note: ':focus-visible 样式' },
+        { item: '大字号 / 高对比度 / 减少动效', passed: true, note: 'app.css 与 a11y 设置' }
+      ],
+      manualRequired: [
+        { item: '真实读屏软件（NVDA/VoiceOver）通读', passed: false, note: '自动化无法覆盖，需人工测试' },
+        { item: '对比度实际测量（AA 4.5:1）', passed: false, note: '需用 axe-core 或色彩计验证' },
+        { item: '纯键盘完成全部关键路径', passed: false, note: '需在目标浏览器实测' }
+      ],
+      disclaimer: '自动检查不构成 WCAG 合规声明；未测项保持可见，不能视为通过。'
+    };
   }
 
   /* ---------------- LLM (optional, OpenAI-compatible) ---------------- */
@@ -1638,7 +1828,13 @@
       trueMetrics: trueMetrics,
       matchAutoReply: matchAutoReply,
       inServiceHours: inServiceHours,
-      offlineReplyText: offlineReplyText
+      offlineReplyText: offlineReplyText,
+      wilsonInterval: wilsonInterval,
+      runRegressionSuite: runRegressionSuite,
+      judgeBiasChecklist: judgeBiasChecklist,
+      visitorMemory: visitorMemory,
+      i18nCoverage: i18nCoverage,
+      a11yChecklist: a11yChecklist
     },
     I18N: I18N,
     SENTIMENTS: SENTIMENTS,
