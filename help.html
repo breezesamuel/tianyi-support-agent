@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>帮助中心 · 数理天医智能客服</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  body { background: var(--bg, #f6f4ed); }
+  .help-wrap { max-width: 960px; margin: 0 auto; padding: 28px 20px 60px; }
+  .help-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .help-head h1 { font-size: 22px; margin: 0; }
+  .help-head p { margin: 4px 0 0; color: var(--ink-3, #7b7d76); font-size: 12px; }
+  .help-tools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .help-tools .input, .help-tools .select { flex: 1; min-width: 200px; }
+  .faq-card { background: #fff; border: 1px solid #e8e3d6; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; }
+  .faq-card:hover { border-color: #a9c9bc; }
+  .faq-card h3 { font-size: 14px; margin: 0 0 6px; }
+  .faq-card .answer { display: none; font-size: 13px; line-height: 1.8; color: #4c5250; margin-top: 10px; border-top: 1px dashed #e8e3d6; padding-top: 10px; }
+  .faq-card.open .answer { display: block; }
+  .faq-meta { font-size: 11px; color: #92968e; }
+</style>
+</head>
+<body>
+<div class="help-wrap">
+  <div class="help-head">
+    <div class="brand-mark">医</div>
+    <div>
+      <h1>数理天医 · 帮助中心</h1>
+      <p>自助查询订单、退款、课程、报告与技术问题 · 由同一份知识库驱动</p>
+    </div>
+    <div style="flex:1"></div>
+    <a class="btn btn-primary" href="index.html">返回智能客服</a>
+  </div>
+
+  <div class="help-tools">
+    <input class="input" id="helpSearch" placeholder="搜索问题，例如：退款多久到账">
+    <select class="select" id="helpCategory"><option value="">全部分类</option></select>
+    <button class="btn" id="helpReset">重置</button>
+  </div>
+
+  <div id="helpCount" class="muted" style="font-size:12px;margin-bottom:12px"></div>
+  <div id="helpList"></div>
+
+  <div class="notice-card" style="margin-top:24px">
+    <strong>非诊疗声明：</strong>本帮助中心内容仅用于平台服务说明与健康科普，不构成医疗诊断、治疗方案或用药建议。如有身体不适，请及时前往正规医疗机构就诊。
+  </div>
+</div>
+
+<script src="assets/core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var TY = window.TY, U = TY.utils;
+  var search = document.getElementById('helpSearch');
+  var category = document.getElementById('helpCategory');
+  var list = document.getElementById('helpList');
+  var count = document.getElementById('helpCount');
+
+  TY.FAQ_CATEGORIES.forEach(function (c) {
+    var o = document.createElement('option'); o.value = c; o.textContent = c; category.appendChild(o);
+  });
+
+  function render() {
+    var kw = search.value.trim().toLowerCase();
+    var cat = category.value;
+    var faqs = TY.Store.state().faqs.filter(function (f) {
+      if (f.enabled === false) return false;
+      if (cat && f.category !== cat) return false;
+      if (kw && (f.question + f.answer + (f.keywords || []).join('')).toLowerCase().indexOf(kw) < 0) return false;
+      return true;
+    });
+    count.textContent = '共 ' + faqs.length + ' 条知识条目';
+    list.innerHTML = faqs.length ? faqs.map(function (f, i) {
+      return '<div class="faq-card" data-i="' + i + '">' +
+        '<h3>' + U.escapeHtml(f.question) + '</h3>' +
+        '<div class="faq-meta">' + U.escapeHtml(f.category) + ' · 命中 ' + (f.hits || 0) + ' 次</div>' +
+        '<div class="answer">' + U.escapeHtml(f.answer).replace(/\n/g, '<br>') + '</div>' +
+      '</div>';
+    }).join('') : '<div class="empty" style="padding:40px"><span class="empty-icon">▣</span>没有匹配的知识条目</div>';
+    window._helpFaqs = faqs;
+  }
+
+  search.addEventListener('input', render);
+  category.addEventListener('change', render);
+  document.getElementById('helpReset').addEventListener('click', function () {
+    search.value = ''; category.value = ''; render();
+  });
+  list.addEventListener('click', function (e) {
+    var card = e.target.closest('.faq-card');
+    if (card) card.classList.toggle('open');
+  });
+  render();
+})();
+</script>
+</body>
+</html>
