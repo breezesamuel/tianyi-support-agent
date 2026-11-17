@@ -4,7 +4,7 @@
 
 ## 一、结论摘要
 
-- 当前应用已覆盖 **108 项**，部分覆盖 **39 项**，完全缺失 **539 项**。
+- 当前应用已覆盖 **109 项**，部分覆盖 **38 项**，完全缺失 **539 项**。
 - 竞品普遍已具备而我们缺失的 P1 模块集中在：**会话协作、坐席辅助、质检合规、客户画像、自助服务、主动消息**。
 - 企业级竞品（Decagon/Sierra/Cognigy/Zendesk）领先在：AOP 自然语言流程、实时质检、跨渠道记忆、深度业务动作、治理与追踪。
 - 国内竞品（七鱼/智齿/环信/Udesk）领先在：全渠道、呼叫中心、工单流转、智能质检、数据大屏、行业模板。
@@ -32,15 +32,15 @@
 
 | 状态 | 数量 | 说明 |
 |---|---:|---|
-| 已有 | 108 | 当前版本已具备，进入保持与测试 |
-| 部分 | 39 | 有雏形但深度不足，优先补齐 |
+| 已有 | 109 | 当前版本已具备，进入保持与测试 |
+| 部分 | 38 | 有雏形但深度不足，优先补齐 |
 | 缺失 | 539 | 需新增，按优先级分批 |
 
 | 优先级 | 数量 |
 |---|---:|
-| P0 保持 | 108 |
+| P0 保持 | 109 |
 | P1 优先 | 213 |
-| P1 补齐 | 39 |
+| P1 补齐 | 38 |
 | P2 规划 | 234 |
 | P3 观察 | 92 |
 
@@ -813,7 +813,7 @@
 | F20-009 | 服务目录 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F20-010 | 成本中心 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F20-011 | 预算 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
-| F20-012 | 用量监控 | 部分 | P1 补齐 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
+| F20-012 | 用量监控 | 已有 | P0 保持 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F20-013 | 配额 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F20-014 | 计费 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
 | F20-015 | 账单 | 缺失 | P2 规划 | Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio | 中 |
