@@ -43,6 +43,15 @@
   <div id="helpList"></div>
 
   <div class="notice-card" style="margin-top:24px">
+    <strong>工单进度查询：</strong>转人工后系统会生成工单号，可凭工单号自助查询处理进度。
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <input class="input" id="ticketRef" placeholder="输入工单号（如 hd 开头）" style="flex:1;min-width:220px" aria-label="工单号">
+      <button class="btn btn-primary" id="ticketQueryBtn">查询进度</button>
+    </div>
+    <div id="ticketResult" style="margin-top:10px;font-size:13px"></div>
+  </div>
+
+  <div class="notice-card" style="margin-top:24px">
     <strong>非诊疗声明：</strong>本帮助中心内容仅用于平台服务说明与健康科普，不构成医疗诊断、治疗方案或用药建议。如有身体不适，请及时前往正规医疗机构就诊。
   </div>
 </div>
@@ -85,6 +94,26 @@
   category.addEventListener('change', render);
   document.getElementById('helpReset').addEventListener('click', function () {
     search.value = ''; category.value = ''; render();
+  });
+
+  /* 工单进度自助查询 */
+  document.getElementById('ticketQueryBtn').addEventListener('click', function () {
+    var ref = document.getElementById('ticketRef').value.trim();
+    var out = document.getElementById('ticketResult');
+    var h = ref ? TY.Store.handoffStatus(ref) : null;
+    if (!ref) { out.innerHTML = '<span class="muted">请先输入工单号。工单号可在转人工提示中查看。</span>'; return; }
+    if (!h) { out.innerHTML = '<span style="color:#b4453c">未找到该工单，请核对工单号是否完整。</span>'; return; }
+    var steps = [
+      { key: 'created', label: '已受理', done: true },
+      { key: 'processing', label: '处理中', done: h.status === 'processing' || h.status === 'resolved' },
+      { key: 'resolved', label: '已完成', done: h.status === 'resolved' }
+    ];
+    out.innerHTML = '<div>工单 <b>' + U.escapeHtml(h.id.slice(-8)) + '</b>（' + U.escapeHtml(h.reason) + '）当前状态：<b>' +
+      (h.status === 'resolved' ? '已完成' : h.status === 'processing' ? '处理中' : '待处理') + '</b></div>' +
+      '<div style="margin-top:6px">' + steps.map(function (s) {
+        return '<span style="margin-right:12px;color:' + (s.done ? '#2f6b5f' : '#8d8d84') + '">' + (s.done ? '● ' : '○ ') + s.label + '</span>';
+      }).join('') + '</div>' +
+      (h.note ? '<div style="margin-top:6px" class="muted">处理备注：' + U.escapeHtml(h.note) + '</div>' : '');
   });
   list.addEventListener('click', function (e) {
     var card = e.target.closest('.faq-card');
