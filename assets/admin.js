@@ -12,6 +12,7 @@
     handoffs: ['人工工单', '处理自动或用户主动发起的转人工请求'],
     faq: ['知识库', '维护 FAQ 条目，直接影响检索命中与回答质量'],
     llm: ['模型接入', '配置可选的大模型接口，启用语义意图识别与生成式回答'],
+    cloud: ['云端同步', '配置 Supabase，让会话数据跨设备存储'],
     settings: ['系统设置', '客服策略与本地数据管理']
   };
 
@@ -273,6 +274,42 @@
     };
   }
 
+  /* ---------- cloud sync ---------- */
+  function cloudStatusHtml() {
+    var st = TY.Cloud.status();
+    var last = st.lastPushAt ? '最近上传 ' + U.formatDateTime(st.lastPushAt) : '尚未上传';
+    if (st.lastPullAt) last += ' · 最近拉取 ' + U.formatDateTime(st.lastPullAt);
+    var color = st.ready ? 'var(--jade)' : 'var(--muted, #8d8d84)';
+    return '<span style="color:' + color + '"><b>' + esc(st.text) + '</b></span>' +
+      '<br><span class="muted">空间：' + esc(st.space) + ' · ' + esc(last) + '</span>';
+  }
+  function loadCloud() {
+    var c = TY.Cloud.config();
+    el('cloudEnabled').checked = !!c.enabled;
+    el('cloudUrl').value = c.url || '';
+    el('cloudKey').value = c.key || '';
+    el('cloudSpace').value = c.space || 'tianyi-default';
+    el('cloudAuto').checked = c.auto !== false;
+    el('cloudSql').value = TY.Cloud.SQL;
+    el('cloudStatus').innerHTML = cloudStatusHtml();
+  }
+  function readCloudForm() {
+    var prev = TY.Cloud.config();
+    var key = el('cloudKey').value.trim();
+    return {
+      enabled: el('cloudEnabled').checked,
+      provider: 'supabase',
+      url: el('cloudUrl').value.trim().replace(/\/+$/, ''),
+      key: key || prev.key,
+      space: el('cloudSpace').value.trim() || 'tianyi-default',
+      auto: el('cloudAuto').checked
+    };
+  }
+  function setCloudBusy(btn, busy, label) {
+    btn.disabled = busy;
+    btn.textContent = busy ? '处理中…' : label;
+  }
+
   /* ---------- settings ---------- */
   function loadSettings() {
     var s = Store.state().settings;
@@ -345,6 +382,7 @@
     else if (page === 'handoffs') renderHandoffs();
     else if (page === 'faq') renderFaq();
     else if (page === 'llm') loadLlm();
+    else if (page === 'cloud') loadCloud();
     else if (page === 'settings') loadSettings();
     if (page !== 'overview') {
       var pending = Store.state().handoffs.filter(function (h) { return h.status === 'pending'; }).length;
@@ -363,7 +401,7 @@
     });
     el('refreshBtn').addEventListener('click', function () { render(); U.toast('数据已刷新', 'success'); });
     el('exportBtn').addEventListener('click', function () {
-      U.downloadJson('tianyi-agent-backup-' + U.formatDate(Date.now()) + '.json', Store.state());
+      U.downloadJson('tianyi-agent-backup-' + U.formatDate(Date.now()) + '.json', Store.exportData());
       U.toast('备份已导出', 'success');
     });
 
@@ -457,6 +495,54 @@
       } finally { btn.disabled = false; btn.textContent = '测试连接'; }
     });
 
+    // cloud sync
+    el('saveCloudBtn').addEventListener('click', function () {
+      Store.updateSettings({ cloud: readCloudForm() });
+      TY.Cloud.stop();
+      if (TY.Cloud.ready()) TY.Cloud.start();
+      loadCloud();
+      U.toast('云端同步配置已保存', 'success');
+    });
+    el('testCloudBtn').addEventListener('click', async function () {
+      var form = readCloudForm();
+      if (!form.url || !form.key) { U.toast('请先填写 Project URL 与 anon key', 'warn'); return; }
+      var was = TY.Cloud.config();
+      Store.updateSettings({ cloud: Object.assign({}, was, form, { enabled: true }) });
+      var btn = el('testCloudBtn');
+      setCloudBusy(btn, true, '测试连通');
+      el('cloudStatus').innerHTML = '<span class="muted">正在连接云端…</span>';
+      try {
+        await TY.Cloud.test();
+        el('cloudStatus').innerHTML = '<span style="color:var(--jade)">✓ 云端连接正常，上传与下载均成功</span>';
+        U.toast('云端连接正常', 'success');
+      } catch (err) {
+        el('cloudStatus').innerHTML = '<span style="color:var(--cinnabar)">✗ ' + esc((err && err.message || '未知错误').slice(0, 220)) + '</span>';
+        Store.updateSettings({ cloud: was });
+      } finally { setCloudBusy(btn, false, '测试连通'); loadCloud(); }
+    });
+    el('pushCloudBtn').addEventListener('click', async function () {
+      if (!TY.Cloud.ready()) { U.toast('请先启用并填写云端配置', 'warn'); return; }
+      var btn = el('pushCloudBtn'); setCloudBusy(btn, true, '立即上传');
+      try { await TY.Cloud.push(); loadCloud(); U.toast('已上传到云端', 'success'); }
+      catch (err) { U.toast('上传失败：' + (err && err.message || '未知错误').slice(0, 90), 'error'); }
+      finally { setCloudBusy(btn, false, '立即上传'); }
+    });
+    el('pullCloudBtn').addEventListener('click', async function () {
+      if (!TY.Cloud.ready()) { U.toast('请先启用并填写云端配置', 'warn'); return; }
+      var btn = el('pullCloudBtn'); setCloudBusy(btn, true, '立即下载');
+      try {
+        var changed = await TY.Cloud.pull();
+        loadCloud(); render();
+        U.toast(changed ? '已从云端下载并更新本地数据' : '云端暂无更新或已是最新', 'success');
+      } catch (err) { U.toast('下载失败：' + (err && err.message || '未知错误').slice(0, 90), 'error'); }
+      finally { setCloudBusy(btn, false, '立即下载'); }
+    });
+    el('copySqlBtn').addEventListener('click', function () {
+      var ta = el('cloudSql');
+      try { ta.select(); document.execCommand('copy'); U.toast('SQL 已复制', 'success'); }
+      catch (e) { U.toast('复制失败，请手动选择文本', 'warn'); }
+    });
+
     // settings
     el('saveSettingsBtn').addEventListener('click', function () {
       Store.updateSettings({
@@ -492,6 +578,12 @@
     el('convIntentFilter').innerHTML = '<option value="">全部意图</option>' + Object.keys(TY.INTENTS).map(function (k) { return '<option value="' + k + '">' + TY.INTENTS[k].label + '</option>'; }).join('');
     el('faqCategoryFilter').innerHTML = '<option value="">全部分类</option>' + TY.FAQ_CATEGORIES.map(function (c) { return '<option>' + c + '</option>'; }).join('');
     bind();
+    window.addEventListener('tianyi:cloud-sync', function (e) {
+      if (!e.detail || e.detail.source !== 'pull') return;
+      render();
+      if (page === 'cloud') loadCloud();
+      U.toast('已同步云端最新数据');
+    });
     loadLlm(); loadSettings();
     go('overview');
   }
