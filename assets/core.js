@@ -10,13 +10,57 @@
   var Cloud = null; // 在文件末尾初始化，save() 通过全局引用调用
 
   var INTENTS = {
-    refund: { key: 'refund', label: '退款退费', color: '#b4453c', icon: '退' },
-    order: { key: 'order', label: '查询订单', color: '#b07a2a', icon: '单' },
-    tech: { key: 'tech', label: '技术支持', color: '#2f6b5f', icon: '技' },
-    product: { key: 'product', label: '产品咨询', color: '#5b5f9e', icon: '产' },
-    health: { key: 'health', label: '健康合规', color: '#7a6a55', icon: '健' },
-    human: { key: 'human', label: '转人工', color: '#8d4b7b', icon: '人' },
-    other: { key: 'other', label: '其他咨询', color: '#6b7280', icon: '他' }
+    refund: { key: 'refund', label: '退款退费', en: 'Refund', color: '#b4453c', icon: '退' },
+    order: { key: 'order', label: '查询订单', en: 'Order', color: '#b07a2a', icon: '单' },
+    tech: { key: 'tech', label: '技术支持', en: 'Tech support', color: '#2f6b5f', icon: '技' },
+    product: { key: 'product', label: '产品咨询', en: 'Product', color: '#5b5f9e', icon: '产' },
+    health: { key: 'health', label: '健康合规', en: 'Health & compliance', color: '#7a6a55', icon: '健' },
+    human: { key: 'human', label: '转人工', en: 'Human agent', color: '#8d4b7b', icon: '人' },
+    other: { key: 'other', label: '其他咨询', en: 'Other', color: '#6b7280', icon: '他' }
+  };
+
+  /* 多语言界面词库（第二批）：仅覆盖访客端高频界面文案，知识库答案保持平台原文 */
+  var I18N = {
+    zh: {
+      'brand': '数理天医 · 智能客服', 'admin': '管理后台', 'newChat': '＋ 新建会话', 'help': '▣ 帮助中心 / 自助查询',
+      'convRecords': '对话记录', 'searchConv': '搜索历史会话', 'disclaimer': '非诊疗声明',
+      'disclaimerText': '本助手仅提供平台订单、课程、售后与技术支持咨询；内容不构成医疗诊断、治疗或用药建议。身体不适请及时就医。',
+      'subtitle': '多轮对话 · 知识库检索 · 意图识别 · 自动转人工', 'handoff': '🙋 转人工',
+      'session': '本次会话', 'intent': '识别意图', 'status': '会话状态', 'msgs': '消息数量', 'faqHits': '知识库命中',
+      'rating': '满意度', 'suggest': '推荐知识', 'serviceInfo': '服务说明', 'notRated': '未评价',
+      'active': '进行中', 'waiting_human': '等待人工', 'resolved': '已解决', 'pending': '待识别',
+      'rateQ': '本次回答是否解决您的问题？', 'rateComment': '补充说明（选填）', 'nps': '推荐意愿 0-10（选填）',
+      'rateSubmit': '提交评价', 'rated': '✓ 已评价：', 'stars': ' 星', 'sources': '参考知识库',
+      'handoffDone': '已为您转接人工客服', 'handoffTip': '　工单已生成，人工客服服务时间 09:00–21:00。您也可以继续补充信息。',
+      'placeholder': '请描述您的问题，例如：我的订单还没开通 / 如何申请退款…',
+      'composerFoot': '按 Enter 发送，Shift + Enter 换行 · 回答由知识库与大模型辅助生成，请以平台实际规则为准',
+      'welcomeTitle': '您好，我是天医小助手', 'mood': '情绪', 'language': '语言',
+      'proactiveDefault': '您好，还有疑问吗？可以随时告诉我，或回复「转人工」由客服为您服务。'
+    },
+    en: {
+      'brand': 'Tianyi · Smart Support', 'admin': 'Admin console', 'newChat': '＋ New chat', 'help': '▣ Help center',
+      'convRecords': 'Conversations', 'searchConv': 'Search conversations', 'disclaimer': 'Non-medical disclaimer',
+      'disclaimerText': 'This assistant only answers questions about orders, courses, after-sales and technical support. It does not provide medical diagnosis, treatment or medication advice. Please see a doctor if unwell.',
+      'subtitle': 'Multi-turn chat · FAQ retrieval · Intent detection · Auto escalation', 'handoff': '🙋 Human agent',
+      'session': 'This session', 'intent': 'Detected intent', 'status': 'Status', 'msgs': 'Messages', 'faqHits': 'FAQ hits',
+      'rating': 'Rating', 'suggest': 'Suggested articles', 'serviceInfo': 'Service notes', 'notRated': 'Not rated',
+      'active': 'Active', 'waiting_human': 'Waiting for agent', 'resolved': 'Resolved', 'pending': 'Pending',
+      'rateQ': 'Did this answer solve your problem?', 'rateComment': 'Additional comment (optional)', 'nps': 'Recommendation 0-10 (optional)',
+      'rateSubmit': 'Submit rating', 'rated': '✓ Rated: ', 'stars': ' stars', 'sources': 'FAQ sources',
+      'handoffDone': 'Transferred to a human agent', 'handoffTip': '  A ticket has been created. Service hours 09:00–21:00. You may add more details.',
+      'placeholder': 'Describe your question, e.g. my order is not activated / how to request a refund…',
+      'composerFoot': 'Enter to send, Shift + Enter for new line · Answers are generated from the FAQ and AI, please refer to official platform rules',
+      'welcomeTitle': 'Hello, I am Tianyi Assistant', 'mood': 'Mood', 'language': 'Language',
+      'proactiveDefault': 'Still need help? Just let me know, or type "human agent" to reach our team.'
+    }
+  };
+
+  var SENTIMENTS = {
+    1: { key: 1, label: '愤怒', en: 'Angry', color: '#b4453c' },
+    2: { key: 2, label: '不满', en: 'Frustrated', color: '#c2703c' },
+    3: { key: 3, label: '中性', en: 'Neutral', color: '#6b7280' },
+    4: { key: 4, label: '满意', en: 'Satisfied', color: '#2f6b5f' },
+    5: { key: 5, label: '赞赏', en: 'Delighted', color: '#2f6b5f' }
   };
 
   var FAQ_CATEGORIES = ['订单与支付', '退款与售后', '技术支持', '产品与服务', '健康与合规', '人工服务'];
@@ -93,6 +137,27 @@
     notice: {
       enabled: false,
       text: ''
+    },
+    language: 'zh',
+    canned: [
+      { id: 'c1', title: '退款进度', text: '您的退款申请已提交，审核一般 1-2 个工作日完成，退款到账以支付渠道为准。' },
+      { id: 'c2', title: '订单未开通', text: '请提供订单号与支付时间，我们为您核验并补开权限。' },
+      { id: 'c3', title: '非诊疗声明', text: '平台内容仅作健康科普与生活方式参考，不构成医疗诊断或治疗建议，如有不适请及时就医。' }
+    ],
+    agents: [
+      { id: 'a1', name: '客服-晓琳', skills: ['refund', 'order'] },
+      { id: 'a2', name: '客服-明远', skills: ['tech', 'product'] },
+      { id: 'a3', name: '客服-静宜', skills: ['health', 'human'] }
+    ],
+    routing: {
+      enabled: false,
+      strategy: 'roundrobin'
+    },
+    proactive: {
+      enabled: false,
+      trigger: 'idle',
+      seconds: 45,
+      text: '您好，还有疑问吗？可以随时告诉我，或回复「转人工」由客服为您服务。'
     }
   };
 
@@ -151,14 +216,59 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function t(key) {
+    var lang = (load().settings && load().settings.language) || 'zh';
+    var dict = I18N[lang] || I18N.zh;
+    return dict[key] != null ? dict[key] : (I18N.zh[key] != null ? I18N.zh[key] : key);
+  }
+  function intentLabel(key) {
+    var i = INTENTS[key] || INTENTS.other;
+    var lang = (load().settings && load().settings.language) || 'zh';
+    return lang === 'en' ? (i.en || i.label) : i.label;
+  }
+  function sentimentLabel(key) {
+    var s = SENTIMENTS[key] || SENTIMENTS[3];
+    var lang = (load().settings && load().settings.language) || 'zh';
+    return lang === 'en' ? s.en : s.label;
+  }
+
+  /* 情绪识别：基于词典规则的 5 级情绪（愤怒/不满/中性/满意/赞赏） */
+  var SENTI_RULES = {
+    1: ['气死', '愤怒', '太离谱', '骗人', '欺诈', '举报', '曝光', '律师', '投诉到底', '垃圾'],
+    2: ['投诉', '太差', '没用', '答非所问', '解决不了', '还是不行', '不满意', '什么破', '浪费时间', '催了', '快点', '急'],
+    4: ['谢谢', '感谢', '好的', '明白了', '有用', '解决了', '满意'],
+    5: ['非常感谢', '太棒了', '点赞', '非常好', '很专业', '五星', '好评']
+  };
+  function detectSentiment(text) {
+    var s = String(text || '');
+    var best = 3, bestHits = 0;
+    Object.keys(SENTI_RULES).forEach(function (level) {
+      var hits = 0;
+      SENTI_RULES[level].forEach(function (w) { if (s.indexOf(w) >= 0) hits++; });
+      var weight = Number(level) <= 2 ? hits * 2 : hits;
+      if (weight > bestHits) { bestHits = weight; best = Number(level); }
+    });
+    if (/[！!]{2,}|\?\?|[？]{2,}/.test(s) && best === 3) best = 2;
+    return { level: best, label: sentimentLabel(best), confidence: clamp(0.5 + bestHits * 0.15, 0.5, 0.95) };
+  }
+
+  function audit(action, detail) {
+    try {
+      var s = load();
+      if (!s.auditLog) s.auditLog = [];
+      s.auditLog.unshift({ id: uid('log'), ts: Date.now(), action: action, detail: String(detail || '').slice(0, 160) });
+      if (s.auditLog.length > 300) s.auditLog.length = 300;
+    } catch (e) { /* audit must never break writes */ }
+  }
 
   /* ---------------- state ---------------- */
   function initialState() {
     var t = Date.now();
     return {
-      version: 1,
+      version: 2,
       createdAt: t,
       conversations: [],
+      auditLog: [],
       faqs: SEED_FAQS.map(function (f, i) {
         return {
           id: 'faq_' + (i + 1), category: f.category, intent: f.intent,
@@ -187,7 +297,13 @@
           S.settings.sla = Object.assign({}, DEFAULT_SETTINGS.sla, (parsed.settings && parsed.settings.sla) || {});
           S.settings.compliance = Object.assign({}, DEFAULT_SETTINGS.compliance, (parsed.settings && parsed.settings.compliance) || {});
           S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (parsed.settings && parsed.settings.notice) || {});
+          S.settings.routing = Object.assign({}, DEFAULT_SETTINGS.routing, (parsed.settings && parsed.settings.routing) || {});
+          S.settings.proactive = Object.assign({}, DEFAULT_SETTINGS.proactive, (parsed.settings && parsed.settings.proactive) || {});
+          if (!S.settings.language) S.settings.language = 'zh';
+          S.settings.canned = Array.isArray(S.settings.canned) ? S.settings.canned : DEFAULT_SETTINGS.canned;
+          S.settings.agents = Array.isArray(S.settings.agents) ? S.settings.agents : DEFAULT_SETTINGS.agents;
           S.handoffs = parsed.handoffs || [];
+          S.auditLog = Array.isArray(parsed.auditLog) ? parsed.auditLog : [];
           return S;
         }
       }
@@ -226,9 +342,15 @@
       S.settings.sla = Object.assign({}, DEFAULT_SETTINGS.sla, (obj.settings && obj.settings.sla) || {});
       S.settings.compliance = Object.assign({}, DEFAULT_SETTINGS.compliance, (obj.settings && obj.settings.compliance) || {});
       S.settings.notice = Object.assign({}, DEFAULT_SETTINGS.notice, (obj.settings && obj.settings.notice) || {});
+      S.settings.routing = Object.assign({}, DEFAULT_SETTINGS.routing, (obj.settings && obj.settings.routing) || {});
+      S.settings.proactive = Object.assign({}, DEFAULT_SETTINGS.proactive, (obj.settings && obj.settings.proactive) || {});
+      if (!S.settings.language) S.settings.language = 'zh';
+      S.settings.canned = Array.isArray(S.settings.canned) ? S.settings.canned : DEFAULT_SETTINGS.canned;
+      S.settings.agents = Array.isArray(S.settings.agents) ? S.settings.agents : DEFAULT_SETTINGS.agents;
       if (!S.settings.llm.apiKey) S.settings.llm.apiKey = prevLlmKey;
       if (!S.settings.cloud.key) S.settings.cloud.key = prevCloudKey;
       S.handoffs = obj.handoffs || [];
+      S.auditLog = Array.isArray(obj.auditLog) ? obj.auditLog : [];
       save(); return S;
     },
     exportData: function () {
@@ -238,6 +360,110 @@
       return copy;
     },
     mutate: function (fn) { var s = load(); var r = fn(s); save(); return r; },
+    auditLog: function () { return (load().auditLog || []).slice(0, 100); },
+    /* ---------- 第二批：多语言 / 坐席 / 快捷回复 / 情绪 / 知识缺口 ---------- */
+    setLanguage: function (lang) {
+      var l = lang === 'en' ? 'en' : 'zh';
+      var r = Store.updateSettings({ language: l });
+      audit('settings.language', l);
+      return r;
+    },
+    setAssignee: function (convId, agentId) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        c.assignee = agentId || '';
+        var a = s.settings.agents.filter(function (x) { return x.id === agentId; })[0];
+        audit('conversation.assign', (c.title || '') + ' → ' + (a ? a.name : '未分配'));
+        return c;
+      });
+    },
+    autoAssign: function (intentKey) {
+      return Store.mutate(function (s) {
+        var agents = s.settings.agents || [];
+        if (!agents.length) return null;
+        var skilled = agents.filter(function (a) { return (a.skills || []).indexOf(intentKey) >= 0; });
+        var pool = skilled.length ? skilled : agents;
+        var counts = {};
+        s.conversations.forEach(function (c) { if (c.assignee) counts[c.assignee] = (counts[c.assignee] || 0) + 1; });
+        var pick = pool.slice().sort(function (a, b) { return (counts[a.id] || 0) - (counts[b.id] || 0); })[0];
+        return pick || null;
+      });
+    },
+    upsertCanned: function (item) {
+      return Store.mutate(function (s) {
+        s.settings.canned = Array.isArray(s.settings.canned) ? s.settings.canned : [];
+        if (item.id) {
+          var c = s.settings.canned.filter(function (x) { return x.id === item.id; })[0];
+          if (c) { Object.assign(c, item); audit('canned.update', c.title); return c; }
+        }
+        var n = Object.assign({ id: uid('canned') }, item);
+        s.settings.canned.push(n); audit('canned.create', n.title); return n;
+      });
+    },
+    deleteCanned: function (id) {
+      return Store.mutate(function (s) {
+        s.settings.canned = (s.settings.canned || []).filter(function (x) { return x.id !== id; });
+        audit('canned.delete', id); return true;
+      });
+    },
+    upsertAgent: function (item) {
+      return Store.mutate(function (s) {
+        s.settings.agents = Array.isArray(s.settings.agents) ? s.settings.agents : [];
+        if (item.id) {
+          var a = s.settings.agents.filter(function (x) { return x.id === item.id; })[0];
+          if (a) { Object.assign(a, item); audit('agent.update', a.name); return a; }
+        }
+        var n = Object.assign({ id: uid('agent'), skills: [] }, item);
+        s.settings.agents.push(n); audit('agent.create', n.name); return n;
+      });
+    },
+    deleteAgent: function (id) {
+      return Store.mutate(function (s) {
+        s.settings.agents = (s.settings.agents || []).filter(function (x) { return x.id !== id; });
+        s.conversations.forEach(function (c) { if (c.assignee === id) c.assignee = ''; });
+        audit('agent.delete', id); return true;
+      });
+    },
+    setMood: function (convId, level) {
+      return Store.mutate(function (s) {
+        var c = s.conversations.filter(function (x) { return x.id === convId; })[0];
+        if (!c) return null;
+        c.mood = clamp(Number(level) || 3, 1, 5);
+        return c;
+      });
+    },
+    knowledgeGaps: function () {
+      var s = load();
+      var map = {};
+      s.conversations.forEach(function (c) {
+        var unsolved = c.status === 'waiting_human' || (c.unresolvedTurns || 0) > 0 ||
+          (c.messages || []).some(function (m) { return m.handoff && /知识库|未命中|无法覆盖/.test(m.handoff); });
+        if (!unsolved) return;
+        var u = (c.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+        if (!u) return;
+        var q = String(u.content || '').trim().slice(0, 60);
+        if (!q) return;
+        var hit = false;
+        (c.messages || []).forEach(function (m) { if (m.sources && m.sources.length) hit = true; });
+        if (hit) return;
+        if (!map[q]) map[q] = { question: q, count: 0, intent: c.intent || 'other', lastAt: 0 };
+        map[q].count++; map[q].lastAt = Math.max(map[q].lastAt, c.updatedAt || c.createdAt);
+      });
+      return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return b.count - a.count; });
+    },
+    staleFaqs: function (days) {
+      var s = load();
+      var limit = (days || 90) * 86400000;
+      var now = Date.now();
+      return s.faqs.filter(function (f) {
+        return (f.enabled !== false) && ((f.hits || 0) === 0 || (now - (f.updatedAt || f.createdAt || now)) > limit);
+      }).map(function (f) {
+        return { id: f.id, question: f.question, hits: f.hits || 0,
+          ageDays: Math.floor((now - (f.updatedAt || f.createdAt || now)) / 86400000),
+          reason: (f.hits || 0) === 0 ? '零命中' : '超过 90 天未更新' };
+      });
+    },
     newConversation: function (firstText, meta) {
       return Store.mutate(function (s) {
         var c = {
@@ -246,10 +472,11 @@
           status: 'active', intent: 'other', messages: [],
           rating: null, unresolvedTurns: 0, channel: 'web',
           tags: [], internalNotes: [], summary: '', nps: null,
-          firstResponseAt: null, resolvedAt: null,
+          firstResponseAt: null, resolvedAt: null, mood: 3, assignee: '',
           visitor: Object.assign({ id: 'anon', ua: '', lang: '', ref: '', firstSeen: Date.now() }, meta || {})
         };
         s.conversations.unshift(c);
+        audit('conversation.create', c.title);
         return c;
       });
     },
@@ -474,7 +701,19 @@
         avgNps: npsScores.length ? npsScores.reduce(function (a, b) { return a + b; }, 0) / npsScores.length : null,
         npsCount: npsScores.length,
         complianceFlags: flagged,
-        tagCounts: tagCounts
+        tagCounts: tagCounts,
+        moodCounts: (function () {
+          var m = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+          convs.forEach(function (c) { if (c.mood) m[c.mood] = (m[c.mood] || 0) + 1; });
+          return m;
+        })(),
+        assigneeCounts: (function () {
+          var map = {}, agents = s.settings.agents || [];
+          agents.forEach(function (a) { map[a.id] = { name: a.name, count: 0 }; });
+          convs.forEach(function (c) { if (c.assignee && map[c.assignee]) map[c.assignee].count++; });
+          return map;
+        })(),
+        gaps: Store.knowledgeGaps().length
       };
     }
   };
@@ -556,6 +795,32 @@
       top: top,
       bestScore: results.length ? results[0].score : 0,
       confident: results.length > 0 && results[0].score >= Math.max(threshold, 4)
+    };
+  }
+
+  /* 机器人模拟测试（竞品 Simulations 的本地轻量版）：
+     输入一句话，完整回放意图识别→知识库检索→回答→情绪→合规→转人工决策链，
+     可在上线前验证 FAQ 与规则改动，避免直接改坏线上机器人。 */
+  function simulate(text) {
+    var raw = String(text || '');
+    if (!raw.trim()) return null;
+    var intent = detectIntent(raw);
+    var retrieval = retrieveFaq(raw, intent.key, 3);
+    var answer = buildFallbackAnswer(raw, retrieval, intent);
+    var mood = detectSentiment(raw);
+    var complianceFlags = scanCompliance(answer);
+    var handoff = /\[\[HANDOFF\]\]/.test(answer) || intent.key === 'human' || mood.level <= 2;
+    var reason = intent.key === 'human' ? '用户主动要求人工'
+      : (mood.level <= 2 ? '检测到负面情绪，需优先人工跟进'
+      : (handoff ? '知识库未能充分覆盖' : ''));
+    return {
+      text: raw, intent: intent.key, intentLabel: intentLabel(intent.key), confidence: intent.confidence,
+      signals: intent.signals, mood: mood.level, moodLabel: mood.label,
+      hits: retrieval.hits.map(function (h) { return { question: h.faq.question, score: h.score, id: h.faq.id }; }),
+      bestScore: retrieval.bestScore, confident: retrieval.confident,
+      answer: answer.replace(/\[\[HANDOFF\]\]/g, '').trim(), complianceFlags: complianceFlags,
+      handoff: handoff, reason: reason,
+      verdict: handoff ? '转人工' : (retrieval.confident ? '可自动解答' : '需复核')
     };
   }
 
@@ -728,6 +993,8 @@
     S.settings.sla = Object.assign({}, local.settings.sla || DEFAULT_SETTINGS.sla, (remote.settings && remote.settings.sla) || {});
     S.settings.compliance = Object.assign({}, local.settings.compliance || DEFAULT_SETTINGS.compliance, (remote.settings && remote.settings.compliance) || {});
     S.settings.notice = Object.assign({}, local.settings.notice || DEFAULT_SETTINGS.notice, (remote.settings && remote.settings.notice) || {});
+    S.settings.routing = Object.assign({}, local.settings.routing || DEFAULT_SETTINGS.routing, (remote.settings && remote.settings.routing) || {});
+    S.settings.proactive = Object.assign({}, local.settings.proactive || DEFAULT_SETTINGS.proactive, (remote.settings && remote.settings.proactive) || {});
     S.settings.llm.apiKey = llmKey;
     S.settings.cloud.key = cloudKey;
     S.handoffs = Array.isArray(remote.handoffs) ? remote.handoffs : (local.handoffs || []);
@@ -834,8 +1101,15 @@
       classifyWithLlm: classifyWithLlm,
       buildSystemPrompt: buildSystemPrompt,
       buildFallbackAnswer: buildFallbackAnswer,
-      scanCompliance: scanCompliance
+      scanCompliance: scanCompliance,
+      simulate: simulate,
+      detectSentiment: detectSentiment
     },
+    I18N: I18N,
+    SENTIMENTS: SENTIMENTS,
+    t: t,
+    intentLabel: intentLabel,
+    sentimentLabel: sentimentLabel,
     utils: {
       uid: uid, escapeHtml: escapeHtml, pad: pad, formatTime: formatTime,
       formatDate: formatDate, formatDateTime: formatDateTime, relativeTime: relativeTime,
