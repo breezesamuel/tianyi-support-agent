@@ -34,6 +34,11 @@
     set('composerFoot', t('composerFoot'));
     var search = el('convSearch'); if (search) search.placeholder = t('searchConv');
     var input = el('msgInput'); if (input) input.placeholder = t('placeholder');
+    set('skipLink', t('skipToChat'));
+    var voice = el('voiceBtn'); if (voice) voice.title = t('voice');
+    var disc = Store.state().settings.disclosure || {};
+    set('aiDisclosureText', disc.enabled !== false ? (isEn ? 'You are talking to an AI assistant. Answers are generated from the FAQ and AI; please refer to official platform rules.' : (disc.text || t('aiDisclosureTip'))) : '');
+    var discBox = el('aiDisclosure'); if (discBox) discBox.classList.toggle('hidden', disc.enabled === false);
     document.documentElement.lang = isEn ? 'en' : 'zh-CN';
   }
 
@@ -43,6 +48,28 @@
   var controller = null;
   var pendingScore = 0;
   var searchTerm = '';
+  var speechRec = null;
+  var speechOn = false;
+
+  /* 无障碍播报：把关键状态变化读给屏幕阅读器（WCAG 2.2 4.1.3） */
+  function announce(msg) {
+    var cfg = Store.state().settings.a11y || {};
+    if (cfg.announcements === false) return;
+    var n = el('liveAnnouncer'); if (!n) return;
+    n.textContent = '';
+    setTimeout(function () { n.textContent = msg; }, 60);
+  }
+  function applyA11y() {
+    var cfg = Store.state().settings.a11y || {};
+    var root = el('appRoot');
+    if (root) {
+      root.classList.toggle('a11y-large', !!cfg.largeText);
+      root.classList.toggle('a11y-contrast', !!cfg.highContrast);
+      root.classList.toggle('a11y-reduce-motion', !!cfg.reduceMotion);
+    }
+    var tb = el('a11yTextBtn'); if (tb) tb.setAttribute('aria-pressed', cfg.largeText ? 'true' : 'false');
+    var cb = el('a11yContrastBtn'); if (cb) cb.setAttribute('aria-pressed', cfg.highContrast ? 'true' : 'false');
+  }
 
   function buildSummaryText(conv, intentKey, answer) {
     var firstUser = (conv.messages || []).filter(function (m) { return m.role === 'user'; })[0];
@@ -304,6 +331,16 @@
   async function send(text) {
     text = String(text || '').trim();
     if (!text || busy) return;
+    /* PII 防护：敏感信息在写入会话/日志/大模型之前先脱敏 */
+    var privacy = Store.state().settings.privacy || {};
+    if (privacy.enabled !== false) {
+      var red = Engine.redactPii(text);
+      if (red.hits && red.hits.length) {
+        text = red.text;
+        U.toast(t('piiAlert') + '（' + red.hits.map(function (h) { return h.label; }).join('、') + '）', 'warn');
+        announce(t('piiAlert'));
+      }
+    }
     if (!currentId) {
       var created = Store.newConversation(text, visitorMeta());
       currentId = created.id;
@@ -423,6 +460,7 @@
     proactiveShown = false;
     resetIdleTimer();
     renderAll();
+    announce(wantsHandoff ? '已为您转接人工客服' : (t('welcomeTitle') + ' 已给出回答'));
   }
 
   function setBusy(v) {
@@ -455,6 +493,61 @@
     t.style.height = Math.min(t.scrollHeight, 130) + 'px';
   }
 
+  /* Web Speech API 语音输入（渐进增强：不支持时降级为文字输入并提示） */
+  function bindVoice() {
+    var btn = el('voiceBtn');
+    if (!btn) return;
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var vcfg = Store.state().settings.voice || {};
+    if (!SR || vcfg.enabled === false) {
+      btn.disabled = true;
+      btn.title = t('voiceUnsupported');
+      btn.setAttribute('aria-label', t('voiceUnsupported'));
+      return;
+    }
+    btn.addEventListener('click', function () {
+      if (speechOn) {
+        if (speechRec) speechRec.stop();
+        return;
+      }
+      try {
+        speechRec = new SR();
+        speechRec.lang = vcfg.lang || 'zh-CN';
+        speechRec.interimResults = true;
+        speechRec.continuous = false;
+        var finalText = '';
+        speechRec.onresult = function (e) {
+          var interim = '';
+          for (var i = e.resultIndex; i < e.results.length; i++) {
+            var seg = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += seg; else interim += seg;
+          }
+          el('msgInput').value = (finalText + interim).trim();
+          autoResize();
+        };
+        speechRec.onerror = function (e) {
+          speechOn = false; btn.classList.remove('recording');
+          btn.setAttribute('aria-pressed', 'false');
+          U.toast('语音识别失败：' + (e.error || '未知错误'), 'warn');
+        };
+        speechRec.onend = function () {
+          speechOn = false; btn.classList.remove('recording');
+          btn.setAttribute('aria-pressed', 'false');
+          btn.textContent = '🎙';
+          announce('语音输入已结束');
+        };
+        speechRec.start();
+        speechOn = true;
+        btn.classList.add('recording');
+        btn.setAttribute('aria-pressed', 'true');
+        btn.textContent = '■';
+        announce(t('voiceListening'));
+      } catch (err) {
+        U.toast('无法启动语音输入，请使用文字输入', 'warn');
+      }
+    });
+  }
+
   /* ---------- events ---------- */
   function bind() {
     el('newChatBtn').addEventListener('click', newChat);
@@ -465,6 +558,24 @@
       applyI18n(); renderAll();
       U.toast(cur === 'zh' ? 'Switched to English' : '已切换为中文', 'success');
     });
+    // WCAG 无障碍控制
+    el('a11yTextBtn').addEventListener('click', function () {
+      var cur = Store.state().settings.a11y || {};
+      Store.setA11y({ largeText: !cur.largeText });
+      applyA11y(); announce(cur.largeText ? '已恢复正常字号' : '已放大字号');
+    });
+    el('a11yContrastBtn').addEventListener('click', function () {
+      var cur = Store.state().settings.a11y || {};
+      Store.setA11y({ highContrast: !cur.highContrast });
+      applyA11y(); announce(cur.highContrast ? '已关闭高对比度' : '已开启高对比度');
+    });
+    // 键盘快捷键：Alt+N 新会话、Alt+/ 聚焦输入、Esc 停止生成
+    document.addEventListener('keydown', function (e) {
+      if (e.altKey && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); newChat(); }
+      if (e.altKey && e.key === '/') { e.preventDefault(); el('msgInput').focus(); }
+      if (e.key === 'Escape' && busy && controller) { controller.abort(); U.toast('已停止生成'); }
+    });
+    bindVoice();
     el('msgInput').addEventListener('input', resetIdleTimer);
     el('convSearch').addEventListener('input', function (e) { searchTerm = e.target.value; renderSidebar(); });
     el('convList').addEventListener('click', function (e) {
@@ -527,6 +638,7 @@
 
   function init() {
     applyI18n();
+    applyA11y();
     bind();
     resetIdleTimer();
     window.addEventListener('tianyi:cloud-sync', function (e) {
