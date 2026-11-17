@@ -445,3 +445,11 @@ table.data tbody tr:hover { background: #fbf9f3; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
 /* 键盘焦点可见（WCAG 2.4.7） */
 :focus-visible { outline: 2px solid #2f6b5f !important; outline-offset: 2px; }
+
+/* 第八轮：emoji 面板 / 朗读按钮 / 图片消息 */
+.emoji-panel { display: flex; flex-wrap: wrap; gap: 2px; padding: 10px 14px; border-top: 1px solid var(--line, #e8e4da); background: var(--surface, #fff); max-height: 132px; overflow-y: auto; }
+.emoji-panel button { background: none; border: none; font-size: 22px; line-height: 1; padding: 6px; border-radius: 8px; cursor: pointer; }
+.emoji-panel button:hover { background: var(--surface-2, #f4f1e9); }
+.speak-btn { background: none; border: none; font-size: 13px; cursor: pointer; opacity: .65; padding: 2px 4px; border-radius: 6px; margin-top: 2px; }
+.speak-btn:hover { opacity: 1; background: var(--surface-2, #f4f1e9); }
+.chat-img { cursor: zoom-in; }
