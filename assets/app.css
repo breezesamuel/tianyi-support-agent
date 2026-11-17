@@ -400,3 +400,9 @@ table.data tbody tr:hover { background: #fbf9f3; cursor: pointer; }
   #menuBtn { display: inline-flex !important; }
 }
 #menuBtn { display: none; }
+
+.alert-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 9px; background: #fbf4e8; border: 1px solid #ecdfbe; margin-bottom: 8px; cursor: pointer; }
+.alert-row b { font-size: 12px; color: #6d572f; }
+.alert-row span { font-size: 11px; color: #967a45; }
+.alert-row:hover { border-color: #d8bf87; }
+.drawer-msg .badge.red { margin-left: 6px; }
