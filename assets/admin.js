@@ -166,28 +166,77 @@
   }
 
   /* ---------- conversations ---------- */
+  var selectedConvs = {};
+
+  function queueBadge(c) {
+    if (c.vip) return '<span class="badge red">VIP</span>';
+    if (c.status === 'waiting_human' && !c.assignee) {
+      var qi = Store.queueInfo(c.id);
+      return '<span class="badge amber">排队 ' + (qi.position || '-') + '</span>';
+    }
+    if (c.assignee) return '<span class="badge green">已分配</span>';
+    return '<span class="muted">—</span>';
+  }
+
+  function syncBatchBar() {
+    var ids = Object.keys(selectedConvs).filter(function (k) { return selectedConvs[k]; });
+    var bar = el('batchBar');
+    if (!bar) return;
+    bar.classList.toggle('hidden', ids.length === 0);
+    el('batchCount').textContent = '已选 ' + ids.length + ' 条';
+  }
+
   function renderConversations() {
     var kw = el('convFilter').value.trim().toLowerCase();
     var ik = el('convIntentFilter').value, sk = el('convStatusFilter').value;
-    var list = Store.state().conversations.slice().sort(function (a, b) { return b.updatedAt - a.updatedAt; }).filter(function (c) {
+    var qk = el('convQueueFilter') ? el('convQueueFilter').value : '';
+    var list = Store.state().conversations.slice().sort(function (a, b) {
+      if (!!a.vip !== !!b.vip) return a.vip ? -1 : 1;
+      return b.updatedAt - a.updatedAt;
+    }).filter(function (c) {
       if (ik && c.intent !== ik) return false;
       if (sk && c.status !== sk) return false;
+      if (qk === 'vip' && !c.vip) return false;
+      if (qk === 'queued' && !(c.status === 'waiting_human' && !c.assignee)) return false;
+      if (qk === 'mine' && !c.assignee) return false;
       if (kw && (c.title || '').toLowerCase().indexOf(kw) < 0 &&
           !(c.messages || []).some(function (m) { return String(m.content || '').toLowerCase().indexOf(kw) >= 0; })) return false;
       return true;
     });
     el('convCount').textContent = '共 ' + list.length + ' 条会话';
     el('convTable').innerHTML = list.length ? list.map(function (c) {
+      var checked = selectedConvs[c.id] ? ' checked' : '';
       return '<tr data-id="' + c.id + '">' +
-        '<td class="td-strong td-clip" title="' + esc(c.title) + '">' + esc(c.title) + '</td>' +
+        '<td><input type="checkbox" data-pick="' + c.id + '"' + checked + ' aria-label="选择会话"></td>' +
+        '<td class="td-strong td-clip" title="' + esc(c.title) + '">' + (c.vip ? '<span class="badge red" style="margin-right:4px">VIP</span>' : '') + esc(c.title) + '</td>' +
         '<td>' + intentBadge(c.intent) + '</td><td>' + fmtStatus(c.status) + '</td>' +
+        '<td>' + queueBadge(c) + '</td>' +
         '<td>' + slaBadge(c) + '</td>' +
         '<td>' + (c.messages || []).length + '</td>' +
         '<td>' + (c.rating ? stars(c.rating.score) : '<span class="muted">未评价</span>') + '</td>' +
         '<td>' + U.formatDateTime(c.updatedAt) + '</td>' +
         '<td><button class="btn btn-sm" data-act="view" data-id="' + c.id + '">查看</button> ' +
           '<button class="btn btn-sm btn-danger" data-act="del" data-id="' + c.id + '">删除</button></td></tr>';
-    }).join('') : '<tr><td colspan="8"><div class="empty"><span class="empty-icon">▤</span>没有符合条件的会话</div></td></tr>';
+    }).join('') : '<tr><td colspan="10"><div class="empty"><span class="empty-icon">▤</span>没有符合条件的会话</div></td></tr>';
+    syncBatchBar();
+  }
+
+  function agentOptions(current) {
+    return (Store.state().settings.agents || []).map(function (a) {
+      return '<option value="' + esc(a.id) + '"' + (a.id === current ? ' selected' : '') + '>' + esc(a.name) + '</option>';
+    }).join('');
+  }
+  function macroButtons(convId) {
+    var macros = Store.state().settings.macros || [];
+    return macros.map(function (m) {
+      return '<button class="btn btn-sm btn-ghost" data-drawer-act="macro" data-id="' + convId + '" data-macro="' + esc(m.id) + '" title="执行回复宏：' + esc(m.title) + '">⚡ ' + esc(m.title) + '</button>';
+    }).join('') || '<span class="muted" style="font-size:11px">暂无回复宏</span>';
+  }
+  function templateButtons(convId) {
+    var tps = Store.state().settings.templates || [];
+    return tps.map(function (tp) {
+      return '<button class="btn btn-sm btn-ghost" data-drawer-act="template" data-id="' + convId + '" data-tpl="' + esc(tp.id) + '" title="插入回复模板到草稿">▤ ' + esc(tp.title) + '</button>';
+    }).join('') || '<span class="muted" style="font-size:11px">暂无模板</span>';
   }
 
   function openConvDrawer(id) {
@@ -225,6 +274,34 @@
       '<div style="font-size:12px;margin:12px 0 6px"><b>内部备注（客户不可见）</b>' + notes +
       '<textarea class="textarea" id="noteInput" placeholder="写下处理进展…"></textarea>' +
       '<button class="btn btn-sm" data-drawer-act="addnote" data-id="' + c.id + '" style="margin-top:6px">添加备注</button></div>' +
+      '<div class="collab-box">' +
+        '<div class="collab-title">⚙ 坐席协作台（第四轮）</div>' +
+        '<div class="collab-row"><span>优先级 / 分配</span><div>' +
+          (c.vip ? '<span class="badge red">★ VIP</span>' : '<span class="muted">普通</span>') + ' · ' +
+          '<span>' + esc((Store.state().settings.agents.filter(function (a) { return a.id === c.assignee; })[0] || {}).name || '未分配') + '</span>' +
+          ' <button class="btn btn-sm" data-drawer-act="toggleVip" data-id="' + c.id + '">' + (c.vip ? '取消 VIP' : '标为 VIP') + '</button></div></div>' +
+        '<div class="collab-row"><span>转接坐席</span><div><select class="select" id="transferAgent">' +
+          '<option value="">选择坐席…</option>' + agentOptions(c.assignee) + '</select>' +
+          '<input class="input" id="transferNote" placeholder="转接备注（选填）" style="margin-top:6px">' +
+          '<button class="btn btn-sm" data-drawer-act="transfer" data-id="' + c.id + '" style="margin-top:6px">转接</button></div></div>' +
+        (c.transfers && c.transfers.length ? '<div class="collab-row"><span>转接记录</span><div class="muted" style="font-size:11px">' +
+          esc(c.transfers.map(function (tr) {
+            var an = Store.state().settings.agents.filter(function (a) { return a.id === tr.to; })[0];
+            return U.formatDateTime(tr.ts) + ' → ' + (an ? an.name : tr.to);
+          }).join('；')) + '</div></div>' : '') +
+        '<div class="collab-row"><span>@同事</span><div><input class="input" id="mentionInput" placeholder="输入 @坐席姓名 + 说明">' +
+          '<button class="btn btn-sm" data-drawer-act="mention" data-id="' + c.id + '" style="margin-top:6px">发送提醒</button></div></div>' +
+        '<div class="collab-row"><span>回复草稿</span><div><textarea class="textarea" id="draftInput" placeholder="自动保存草稿，切换会话不丢失">' + esc((Store.getDraft(c.id) || {}).text || '') + '</textarea>' +
+          '<button class="btn btn-sm" data-drawer-act="savedraft" data-id="' + c.id + '" style="margin-top:6px">保存草稿</button></div></div>' +
+        '<div class="collab-row"><span>回复宏 / 模板</span><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          macroButtons(c.id) + templateButtons(c.id) + '</div></div>' +
+        '<div class="collab-row"><span>合并 / 拆分</span><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<input class="input" id="mergeInput" placeholder="来源会话ID（逗号分隔）" style="flex:1;min-width:160px">' +
+          '<button class="btn btn-sm" data-drawer-act="merge" data-id="' + c.id + '">合并</button>' +
+          '<button class="btn btn-sm" data-drawer-act="split" data-id="' + c.id + '">拆分勾选消息</button></div>' +
+          '<div class="muted" style="font-size:11px;margin-top:4px">拆分需在下方消息区勾选消息（见每条消息左侧复选框）</div></div>' +
+        '<div class="collab-row"><span>排队位置</span><div>' + (function () { var qi = Store.queueInfo(c.id); return qi.enabled && qi.position ? ('第 ' + qi.position + ' 位 / 共 ' + qi.total + ' 人') : '<span class="muted">未在排队</span>'; })() + '</div></div>' +
+      '</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
       '<button class="btn btn-sm" data-drawer-act="resolve" data-id="' + c.id + '">标记已解决</button>' +
       '<button class="btn btn-sm" data-drawer-act="export" data-id="' + c.id + '">导出本会话</button>' +
@@ -232,7 +309,7 @@
     html += '<h4 style="font-size:12px;color:var(--ink-3);letter-spacing:1px;margin:0 0 10px">完整对话</h4>';
     html += (c.messages || []).map(function (m) {
       return '<div class="drawer-msg ' + (m.role === 'user' ? 'user' : '') + '">' +
-        '<div class="dm-role"><b>' + (m.role === 'user' ? '用户' : '天医小助手') + '</b><span>' + U.formatDateTime(m.ts) + '</span>' +
+        '<div class="dm-role"><label class="split-pick" title="拆分时勾选此消息"><input type="checkbox" data-split-msg="' + esc(m.id) + '"></label><b>' + (m.role === 'user' ? '用户' : '天医小助手') + '</b><span>' + U.formatDateTime(m.ts) + '</span>' +
         (m.intent ? '<span>' + (TY.INTENTS[m.intent] || TY.INTENTS.other).label + '</span>' : '') +
         (m.engine ? '<span>' + esc(m.engine) + '</span>' : '') +
         (m.complianceFlags && m.complianceFlags.length ? '<span class="badge red">合规：' + esc(m.complianceFlags.join('/')) + '</span>' : '') + '</div>' +
@@ -244,6 +321,9 @@
     el('drawerBody').innerHTML = html;
     el('drawer').classList.add('open');
     el('drawerMask').classList.add('open');
+    /* 碰撞检测：登记当前坐席正在查看，若窗口内有其他坐席则提示 */
+    var collision = Store.beginView(c.id, '当前坐席');
+    if (collision) U.toast('注意：另一位坐席正在查看此会话（' + esc(collision.agent) + '）', 'warn');
   }
   function closeDrawer() { el('drawer').classList.remove('open'); el('drawerMask').classList.remove('open'); }
 
@@ -533,6 +613,24 @@
   }
 
   /* ---------- settings ---------- */
+  /* 关键词规则 <-> 文本（每行：关键词1|关键词2 => 回复） */
+  function keywordRulesToText(rules) {
+    return (rules || []).map(function (r) {
+      return (r.keys || []).join('|') + ' => ' + (r.answer || '');
+    }).join('\n');
+  }
+  function textToKeywordRules(text) {
+    var out = [];
+    String(text || '').split(/\r?\n/).forEach(function (line, i) {
+      var arrow = line.indexOf('=>');
+      if (arrow < 0) return;
+      var keys = line.slice(0, arrow).split(/[|｜,，]/).map(function (k) { return k.trim(); }).filter(Boolean);
+      var answer = line.slice(arrow + 2).trim();
+      if (keys.length && answer) out.push({ id: 'ar' + i + '_' + Date.now().toString(36), keys: keys, answer: answer, enabled: true });
+    });
+    return out;
+  }
+
   function loadSettings() {
     var s = Store.state().settings;
     el('setBotName').value = s.botName || '';
@@ -556,6 +654,14 @@
     el('setDisclosureEnabled').checked = disc.enabled !== false;
     el('setDisclosureText').value = disc.text || '';
     el('setVoiceEnabled').checked = !(s.voice && s.voice.enabled === false);
+    var inbox = s.inbox || {};
+    if (el('setQueueEnabled')) el('setQueueEnabled').checked = inbox.queueEnabled !== false;
+    if (el('setServiceHours')) el('setServiceHours').value = inbox.serviceHours || '09:00-21:00';
+    var ar = s.autoReply || {};
+    if (el('setAutoReplyEnabled')) el('setAutoReplyEnabled').checked = !!ar.enabled;
+    if (el('setOfflineEnabled')) el('setOfflineEnabled').checked = ar.offlineEnabled !== false;
+    if (el('setOfflineText')) el('setOfflineText').value = ar.offlineText || '';
+    if (el('setKeywordRules')) el('setKeywordRules').value = keywordRulesToText(ar.keywords);
     var st = Store.state();
     el('dataConvCount').textContent = st.conversations.length;
     el('dataFaqCount').textContent = st.faqs.length;
@@ -657,8 +763,20 @@
     });
 
     // conversations
-    ['convFilter', 'convIntentFilter', 'convStatusFilter'].forEach(function (id) {
+    ['convFilter', 'convIntentFilter', 'convStatusFilter', 'convQueueFilter'].forEach(function (id) {
+      if (!el(id)) return;
       el(id).addEventListener(id === 'convFilter' ? 'input' : 'change', renderConversations);
+    });
+    el('convCheckAll').addEventListener('change', function (e) {
+      var checked = e.target.checked;
+      Array.prototype.slice.call(document.querySelectorAll('[data-pick]')).forEach(function (cb) {
+        cb.checked = checked; selectedConvs[cb.getAttribute('data-pick')] = checked;
+      });
+      syncBatchBar();
+    });
+    el('convTable').addEventListener('change', function (e) {
+      var cb = e.target.closest('[data-pick]');
+      if (cb) { selectedConvs[cb.getAttribute('data-pick')] = cb.checked; syncBatchBar(); }
     });
     el('convTable').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-act]');
@@ -668,8 +786,33 @@
         else if (act === 'del' && confirm('确定删除这条会话记录吗？')) { Store.deleteConversation(id); render(); U.toast('会话已删除'); }
         return;
       }
+      if (e.target.closest('[data-pick]')) return;
       var row = e.target.closest('tr[data-id]'); if (row) openConvDrawer(row.getAttribute('data-id'));
     });
+    if (el('batchBar')) {
+      el('batchBar').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-batch]'); if (!b) return;
+        var act = b.getAttribute('data-batch');
+        var ids = Object.keys(selectedConvs).filter(function (k) { return selectedConvs[k]; });
+        if (act === 'clear') { selectedConvs = {}; renderConversations(); return; }
+        if (!ids.length) { U.toast('请先勾选会话', 'warn'); return; }
+        if (act === 'assign') {
+          var a = el('batchAgent').value;
+          if (!a) { U.toast('请选择坐席', 'warn'); return; }
+          Store.batchOperation(ids, 'assign', a);
+        } else if (act === 'vip') Store.batchOperation(ids, 'vip', true);
+        else if (act === 'resolve') Store.batchOperation(ids, 'resolve', true);
+        else if (act === 'tag') {
+          var tg = prompt('输入要添加的标签（最多12字）：', '待跟进');
+          if (!tg) return;
+          Store.batchOperation(ids, 'tag', tg);
+        } else if (act === 'delete') {
+          if (!confirm('确定删除选中的 ' + ids.length + ' 条会话吗？')) return;
+          Store.batchOperation(ids, 'delete', true);
+        }
+        selectedConvs = {}; render(); U.toast('批量操作已完成', 'success');
+      });
+    }
     el('drawerClose').addEventListener('click', closeDrawer);
     el('drawerMask').addEventListener('click', closeDrawer);
     el('drawerBody').addEventListener('click', function (e) {
@@ -700,6 +843,44 @@
       } else if (act === 'export') {
         var c = Store.getConversation(id);
         if (c) { U.downloadJson('tianyi-conversation-' + id + '.json', c); U.toast('本会话已导出', 'success'); }
+      } else if (act === 'toggleVip') {
+        var cv = Store.getConversation(id);
+        Store.setVip(id, !cv.vip); openConvDrawer(id); render();
+        U.toast(cv.vip ? '已取消 VIP' : '已标记为 VIP', 'success');
+      } else if (act === 'transfer') {
+        var to = el('transferAgent') ? el('transferAgent').value : '';
+        if (!to) { U.toast('请选择转接坐席', 'warn'); return; }
+        Store.transferConversation(id, to, el('transferNote') ? el('transferNote').value : '');
+        openConvDrawer(id); render(); U.toast('会话已转接', 'success');
+      } else if (act === 'mention') {
+        var mi = el('mentionInput');
+        if (!mi || !mi.value.trim()) { U.toast('请输入 @坐席 与说明', 'warn'); return; }
+        var created = Store.mentionAgent(id, mi.value);
+        if (!created.length) { U.toast('未识别到 @坐席，请用 @坐席姓名', 'warn'); return; }
+        Store.addInternalNote(id, mi.value);
+        openConvDrawer(id); U.toast('已提醒 ' + created.map(function (x) { return x.toName; }).join('/'), 'success');
+      } else if (act === 'savedraft') {
+        var di = el('draftInput');
+        Store.saveDraft(id, di ? di.value : ''); U.toast('草稿已自动保存', 'success');
+      } else if (act === 'macro') {
+        var r = Store.runMacro(id, b.getAttribute('data-macro'));
+        if (r) { openConvDrawer(id); render(); U.toast('已执行宏：' + r.title + '（' + r.applied.length + ' 步）', 'success'); }
+      } else if (act === 'template') {
+        var txt = Store.renderTemplate(b.getAttribute('data-tpl'), id);
+        var tdi = el('draftInput');
+        if (tdi) { tdi.value = (tdi.value ? tdi.value + '\n' : '') + txt; Store.saveDraft(id, tdi.value); U.toast('模板已插入草稿', 'success'); }
+      } else if (act === 'merge') {
+        var mi2 = el('mergeInput');
+        if (!mi2 || !mi2.value.trim()) { U.toast('请输入来源会话 ID', 'warn'); return; }
+        var src = mi2.value.split(/[,，\s]+/).filter(Boolean);
+        var mr = Store.mergeConversations(id, src);
+        if (mr) { closeDrawer(); render(); U.toast('已合并 ' + mr.merged.messages + ' 条消息', 'success'); }
+        else U.toast('合并失败：会话不存在', 'warn');
+      } else if (act === 'split') {
+        var picks = Array.prototype.slice.call(document.querySelectorAll('[data-split-msg]:checked')).map(function (x) { return x.getAttribute('data-split-msg'); });
+        if (!picks.length) { U.toast('请先勾选要拆分的消息', 'warn'); return; }
+        var sp = Store.splitConversation(id, picks);
+        if (sp) { closeDrawer(); render(); U.toast('已拆出新会话（' + sp.messages.length + ' 条消息）', 'success'); }
       }
     });
 
@@ -916,8 +1097,22 @@
         voice: {
           enabled: el('setVoiceEnabled').checked,
           lang: (Store.state().settings.voice && Store.state().settings.voice.lang) || 'zh-CN'
+        },
+        inbox: {
+          queueEnabled: el('setQueueEnabled') ? el('setQueueEnabled').checked : true,
+          serviceHours: (el('setServiceHours') && el('setServiceHours').value.trim()) || '09:00-21:00',
+          vipPriority: (Store.state().settings.inbox && Store.state().settings.inbox.vipPriority) || 100,
+          collisionWindowSec: (Store.state().settings.inbox && Store.state().settings.inbox.collisionWindowSec) || 60
         }
       });
+      var arPatch = {
+        enabled: el('setAutoReplyEnabled') ? el('setAutoReplyEnabled').checked : false,
+        offlineEnabled: el('setOfflineEnabled') ? el('setOfflineEnabled').checked : true,
+        offlineText: (el('setOfflineText') && el('setOfflineText').value.trim().slice(0, 300)) || ''
+      };
+      var kwText = el('setKeywordRules') ? el('setKeywordRules').value.trim() : '';
+      if (kwText) arPatch.keywords = textToKeywordRules(kwText); // 留空则保留现有规则
+      Store.updateSettings({ autoReply: Object.assign({}, (Store.state().settings.autoReply || {}), arPatch) });
       U.toast('客服策略已保存', 'success'); loadSettings();
     });
     el('importBtn').addEventListener('click', function () { el('importFile').click(); });
