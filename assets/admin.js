@@ -612,6 +612,69 @@
     }).join('') : '<tr><td colspan="8"><div class="empty" style="padding:22px"><span class="empty-icon">◉</span>暂无可质检的会话</div></td></tr>';
   }
 
+  /* ---------- skill lab（GitHub Skill 方法论落地） ---------- */
+  function renderSkillLab() {
+    var E = TY.Engine;
+    // 偏见缓解清单
+    var bias = E.judgeBiasChecklist();
+    el('judgeBiasList').innerHTML = bias.map(function (b) {
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12px">' +
+        '<b>' + esc(b.bias) + '</b> <span class="muted">(' + esc(b.en) + ')</span> ' +
+        (b.mitigated ? '<span class="badge green">已缓解</span>' : '<span class="badge red">待处理</span>') +
+        '<div class="muted" style="margin-top:3px">' + esc(b.action) + '</div></div>';
+    }).join('');
+    // 多语言覆盖
+    var cov = E.i18nCoverage();
+    var missText = cov.complete ? '<span class="badge green">全部齐全</span>' :
+      Object.keys(cov.missing).map(function (k) { return k + ': ' + cov.missing[k].length + ' 键'; }).join('；');
+    el('i18nCoverage').innerHTML = '<span>界面语言</span><span>' + cov.languages.join(' / ') + '</span>' +
+      '<span>基准键数</span><span>' + cov.baseKeys + '</span>' +
+      '<span>缺失键</span><span>' + esc(missText) + '</span>';
+    // WCAG 自查
+    var a11y = E.a11yChecklist();
+    var rows = a11y.automated.concat(a11y.manualRequired).map(function (a) {
+      return '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:12px">' +
+        '<span>' + (a.passed ? '✓' : '○') + '</span><span><b>' + esc(a.item) + '</b>' +
+        '<span class="muted"> · ' + esc(a.note) + '</span></span></div>';
+    }).join('');
+    el('a11yChecklist').innerHTML = rows + '<div class="muted" style="font-size:11px;margin-top:6px">' + esc(a11y.disclaimer) + '</div>';
+  }
+
+  function parseRegCases(text) {
+    return String(text || '').split(/\r?\n/).map(function (line) {
+      var p = line.split('|').map(function (x) { return x.trim(); });
+      if (!p[0]) return null;
+      var tc = { id: p[0].slice(0, 12), input: p[0] };
+      if (p[1] && p[1] !== '-') tc.expectIntent = p[1];
+      if (p[2] && p[2] !== '-') tc.expectHandoff = p[2] === 'true';
+      if (p[3] && p[3] !== '-') tc.expectNoCompliance = p[3] === 'true';
+      return tc;
+    }).filter(Boolean);
+  }
+  function runReg() {
+    var cases = parseRegCases(el('regCases').value);
+    var r = TY.Engine.runRegressionSuite(cases);
+    if (!r) { U.toast('请先填写测试用例', 'warn'); return; }
+    var badge = r.decision === 'pass' ? 'green' : (r.decision === 'fail' ? 'red' : 'amber');
+    var ci = r.confidence;
+    var html = '<div class="notice-card" style="border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7">' +
+      '<b>结论：</b><span class="badge ' + badge + '">' + esc(r.decision) + '</span> · ' +
+      '通过 ' + r.passed + '/' + r.total + '（' + Math.round(r.passRate * 100) + '%） · ' +
+      '关键安全失败 <b>' + r.criticalFailures + '</b><br>' +
+      '<b>Wilson 95% 置信区间：</b>' + (ci ? '[' + (ci.low * 100).toFixed(1) + '%, ' + (ci.high * 100).toFixed(1) + '%]' : '—') +
+      ' <span class="muted">（即使 ' + ci.passes + '/' + ci.trials + ' 全过，也不能断言 100% 可靠）</span></div>';
+    html += '<div class="table-wrap" style="margin-top:10px"><table class="data"><thead><tr><th>用例</th><th>结论</th><th>校验项</th><th>实际</th></tr></thead><tbody>' +
+      r.results.map(function (x) {
+        var vBadge = x.verdict === 'pass' ? '<span class="badge green">通过</span>' :
+          (x.verdict === 'critical-fail' ? '<span class="badge red">关键失败</span>' : '<span class="badge amber">失败</span>');
+        var checks = Object.keys(x.checks).map(function (k) { return k + ':' + (x.checks[k] ? '✓' : '✗'); }).join(' ') || '—';
+        var actual = '意图=' + esc(x.actual.intent) + '，转人工=' + x.actual.handoff + '，合规=' + (x.actual.compliance.length || 0);
+        return '<tr><td class="td-strong">' + esc(x.input) + '</td><td>' + vBadge + '</td><td>' + esc(checks) + '</td><td>' + actual + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    el('regResult').innerHTML = html;
+    U.toast('回归评测完成：' + r.decision, r.decision === 'pass' ? 'success' : 'warn');
+  }
+
   /* ---------- settings ---------- */
   /* 关键词规则 <-> 文本（每行：关键词1|关键词2 => 回复） */
   function keywordRulesToText(rules) {
@@ -730,6 +793,7 @@
     else if (page === 'agents') renderAgents();
     else if (page === 'audit') renderAudit();
     else if (page === 'qa') renderQa();
+    else if (page === 'skilllab') renderSkillLab();
     else if (page === 'llm') loadLlm();
     else if (page === 'cloud') loadCloud();
     else if (page === 'settings') loadSettings();
@@ -1034,6 +1098,9 @@
       var b = e.target.closest('[data-qa-view]');
       if (b) { go('conversations'); openConvDrawer(b.getAttribute('data-qa-view')); }
     });
+
+    // skill lab
+    el('runRegBtn').addEventListener('click', runReg);
 
     // agents & canned
     el('routingEnabled').addEventListener('change', function (e) {
