@@ -19,16 +19,17 @@
     </div>
     <div class="topbar-spacer"></div>
     <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">知识库已就绪</span></div>
-    <a class="btn" href="admin.html" title="进入管理后台">
+    <button class="btn btn-icon btn-ghost" id="langBtn" title="Switch language / 切换语言" aria-label="切换语言">🌐 <span id="langLabel">EN</span></button>
+    <a class="btn" href="admin.html" title="进入管理后台" id="adminLink">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-      管理后台
+      <span id="adminText">管理后台</span>
     </a>
     <button class="btn btn-primary" id="newChatBtn">＋ 新建会话</button>
   </header>
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-head">
-      <div class="sidebar-title">对话记录</div>
+      <div class="sidebar-title" id="convRecordsText">对话记录</div>
       <div class="search-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
         <input class="input" id="convSearch" placeholder="搜索历史会话" autocomplete="off">
@@ -37,10 +38,10 @@
     <div class="conv-list" id="convList"></div>
     <div class="sidebar-foot">
       <div class="disclaimer-mini">
-        <strong>非诊疗声明</strong>
-        本助手仅提供平台订单、课程、售后与技术支持咨询；内容不构成医疗诊断、治疗或用药建议。身体不适请及时就医。
+        <strong id="disclaimerTitle">非诊疗声明</strong>
+        <span id="disclaimerText">本助手仅提供平台订单、课程、售后与技术支持咨询；内容不构成医疗诊断、治疗或用药建议。身体不适请及时就医。</span>
       </div>
-      <a class="btn" style="width:100%;margin-top:10px;justify-content:center" href="help.html">▣ 帮助中心 / 自助查询</a>
+      <a class="btn" style="width:100%;margin-top:10px;justify-content:center" href="help.html" id="helpLink">▣ 帮助中心 / 自助查询</a>
     </div>
   </aside>
 
@@ -51,6 +52,7 @@
         <div class="ch-sub" id="chatSub">多轮对话 · 知识库检索 · 意图识别 · 自动转人工</div>
       </div>
       <div class="spacer"></div>
+      <span class="tag" id="moodTag" title="情绪识别"><span id="moodText">情绪 中性</span></span>
       <span class="tag" id="chatIntent"><span class="tag-dot"></span>待识别</span>
       <button class="btn btn-sm" id="handoffBtn" title="转接人工客服">🙋 转人工</button>
     </div>
@@ -79,12 +81,14 @@
   <aside class="aside">
     <div class="aside-section">
       <h4>本次会话</h4>
-      <div class="info-card">
-        <div class="info-row"><span>识别意图</span><span id="infoIntent">—</span></div>
-        <div class="info-row"><span>会话状态</span><span id="infoStatus">进行中</span></div>
-        <div class="info-row"><span>消息数量</span><span id="infoMsgs">0</span></div>
-        <div class="info-row"><span>知识库命中</span><span id="infoFaq">0 条</span></div>
-        <div class="info-row"><span>满意度</span><span id="infoRating">未评价</span></div>
+        <div class="info-card">
+        <div class="info-row"><span id="lblIntent">识别意图</span><span id="infoIntent">—</span></div>
+        <div class="info-row"><span id="lblStatus">会话状态</span><span id="infoStatus">进行中</span></div>
+        <div class="info-row"><span id="lblMsgs">消息数量</span><span id="infoMsgs">0</span></div>
+        <div class="info-row"><span id="lblFaq">知识库命中</span><span id="infoFaq">0 条</span></div>
+        <div class="info-row"><span id="lblRating">满意度</span><span id="infoRating">未评价</span></div>
+        <div class="info-row"><span id="lblMood">情绪</span><span id="infoMood">中性</span></div>
+        <div class="info-row" id="assigneeRow"><span id="lblAssignee">服务坐席</span><span id="infoAssignee">—</span></div>
       </div>
     </div>
     <div class="aside-section">
