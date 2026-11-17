@@ -1,12 +1,13 @@
 /* 数理天医 · 智能客服 Agent
- * core.js — 本地持久化数据层 + FAQ 检索 / 意图识别 / 大模型接入引擎
- * 说明：云服务开通被拒绝，本版本按平台指示使用浏览器本地存储；
- *      大模型为「可选 OpenAI 兼容接口」，密钥仅保存在当前浏览器，不写入源码。
+ * core.js — 持久化数据层 + FAQ 检索 / 意图识别 / 大模型接入引擎
+ * 默认使用浏览器本地存储；可在管理后台配置 Supabase 后启用云端同步。
+ * 密钥只保存在当前浏览器，不写入源码，也不会同步到云端。
  */
 (function (global) {
   'use strict';
 
   var STORAGE_KEY = 'tianyi_agent_state_v1';
+  var Cloud = null; // 在文件末尾初始化，save() 通过全局引用调用
 
   var INTENTS = {
     refund: { key: 'refund', label: '退款退费', color: '#b4453c', icon: '退' },
@@ -67,6 +68,18 @@
       baseUrl: 'https://api.deepseek.com/v1',
       model: 'deepseek-chat',
       apiKey: ''
+    },
+    cloud: {
+      enabled: false,
+      provider: 'supabase',
+      url: '',
+      key: '',
+      space: 'tianyi-default',
+      auto: true,
+      interval: 20,
+      lastPushAt: 0,
+      lastPullAt: 0,
+      lastAppliedAt: 0
     }
   };
 
@@ -157,6 +170,7 @@
           S = parsed;
           S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
           S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (parsed.settings && parsed.settings.llm) || {});
+          S.settings.cloud = Object.assign({}, DEFAULT_SETTINGS.cloud, (parsed.settings && parsed.settings.cloud) || {});
           S.handoffs = parsed.handoffs || [];
           return S;
         }
@@ -166,9 +180,11 @@
     save();
     return S;
   }
+  var suppressCloudPush = false;
   function save() {
     try { global.localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); }
     catch (e) { toast('本地存储空间不足，建议导出数据后清理旧会话', 'warn'); }
+    if (!suppressCloudPush && global.TY && global.TY.Cloud) global.TY.Cloud.schedulePush();
     return S;
   }
 
@@ -184,11 +200,23 @@
     },
     importData: function (obj) {
       if (!obj || !Array.isArray(obj.conversations) || !Array.isArray(obj.faqs)) throw new Error('数据格式不正确');
+      var prev = load();
+      var prevLlmKey = (prev.settings.llm && prev.settings.llm.apiKey) || '';
+      var prevCloudKey = (prev.settings.cloud && prev.settings.cloud.key) || '';
       S = obj;
       S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), obj.settings || {});
       S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (obj.settings && obj.settings.llm) || {});
+      S.settings.cloud = Object.assign({}, DEFAULT_SETTINGS.cloud, (obj.settings && obj.settings.cloud) || {});
+      if (!S.settings.llm.apiKey) S.settings.llm.apiKey = prevLlmKey;
+      if (!S.settings.cloud.key) S.settings.cloud.key = prevCloudKey;
       S.handoffs = obj.handoffs || [];
       save(); return S;
+    },
+    exportData: function () {
+      var copy = JSON.parse(JSON.stringify(load()));
+      if (copy.settings && copy.settings.llm) copy.settings.llm.apiKey = '';
+      if (copy.settings && copy.settings.cloud) copy.settings.cloud.key = '';
+      return copy;
     },
     mutate: function (fn) { var s = load(); var r = fn(s); save(); return r; },
     newConversation: function (firstText) {
@@ -522,12 +550,165 @@
     return parts.join('\n');
   }
 
+  /* ---------------- Cloud sync (optional Supabase REST) ---------------- */
+  var PUSH_TIMER = null;
+  var POLL_TIMER = null;
+  var cloudBusy = { push: false, pull: false };
+
+  var CLOUD_SQL = [
+    '-- 在 Supabase 控制台 SQL Editor 执行一次即可',
+    'create table if not exists public.tianyi_state (',
+    '  id text primary key,',
+    '  data jsonb not null,',
+    '  updated_at timestamptz not null default now()',
+    ');',
+    'alter table public.tianyi_state enable row level security;',
+    'drop policy if exists "tianyi anon all" on public.tianyi_state;',
+    'create policy "tianyi anon all" on public.tianyi_state',
+    '  for all to anon using (true) with check (true);'
+  ].join('\n');
+
+  function emit(name, detail) {
+    try { global.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {}
+  }
+  function cloudConfig() {
+    var s = load();
+    return Object.assign({}, DEFAULT_SETTINGS.cloud, (s.settings && s.settings.cloud) || {});
+  }
+  function cloudReady() {
+    var c = cloudConfig();
+    return !!(c.enabled && c.url && c.key);
+  }
+  function cloudHeaders(c) {
+    return {
+      'apikey': c.key,
+      'Authorization': 'Bearer ' + c.key,
+      'Content-Type': 'application/json'
+    };
+  }
+  function cloudBase(c) { return String(c.url).replace(/\/+$/, ''); }
+  function cloudId(c) { return 'tianyi_state_v1__' + (c.space || 'default'); }
+  function cloudPayload() {
+    var copy = JSON.parse(JSON.stringify(load()));
+    if (copy.settings && copy.settings.llm) copy.settings.llm.apiKey = '';
+    if (copy.settings && copy.settings.cloud) copy.settings.cloud.key = '';
+    copy.updatedAt = Date.now();
+    return copy;
+  }
+  function markCloud(patch) {
+    suppressCloudPush = true;
+    Store.mutate(function (s) {
+      Object.assign(s.settings.cloud, patch);
+      return s.settings.cloud;
+    });
+    suppressCloudPush = false;
+  }
+  function applyRemote(remote) {
+    var local = load();
+    var llmKey = (local.settings.llm && local.settings.llm.apiKey) || '';
+    var cloudKey = (local.settings.cloud && local.settings.cloud.key) || '';
+    S = Object.assign({}, local, remote);
+    S.settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), remote.settings || {});
+    S.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, (remote.settings && remote.settings.llm) || {});
+    S.settings.cloud = Object.assign({}, local.settings.cloud, (remote.settings && remote.settings.cloud) || {});
+    S.settings.llm.apiKey = llmKey;
+    S.settings.cloud.key = cloudKey;
+    S.handoffs = Array.isArray(remote.handoffs) ? remote.handoffs : (local.handoffs || []);
+    suppressCloudPush = true; save(); suppressCloudPush = false;
+    emit('tianyi:cloud-sync', { source: 'pull', at: Date.now() });
+  }
+
+  Cloud = {
+    SQL: CLOUD_SQL,
+    config: cloudConfig,
+    ready: cloudReady,
+    status: function () {
+      var c = cloudConfig();
+      return {
+        ready: cloudReady(),
+        provider: c.provider || 'supabase',
+        space: c.space || 'default',
+        auto: c.auto !== false,
+        lastPushAt: Number(c.lastPushAt || 0),
+        lastPullAt: Number(c.lastPullAt || 0),
+        text: !c.enabled ? '未启用' : (!c.url || !c.key ? '配置不完整' : (c.auto === false ? '已启用（手动同步）' : '已启用 · 自动同步'))
+      };
+    },
+    schedulePush: function () {
+      if (!cloudReady() || cloudConfig().auto === false) return;
+      clearTimeout(PUSH_TIMER);
+      PUSH_TIMER = setTimeout(function () { Cloud.push().catch(function () {}); }, 1500);
+    },
+    push: function () {
+      if (!cloudReady()) return Promise.reject(new Error('云端同步未启用或配置不完整'));
+      if (cloudBusy.push) return Promise.resolve(false);
+      cloudBusy.push = true;
+      var c = cloudConfig();
+      var payload = cloudPayload();
+      var body = { id: cloudId(c), data: payload, updated_at: new Date().toISOString() };
+      return fetch(cloudBase(c) + '/rest/v1/tianyi_state', {
+        method: 'POST',
+        headers: Object.assign({}, cloudHeaders(c), { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify(body)
+      }).then(function (resp) {
+        cloudBusy.push = false;
+        if (!resp.ok) {
+          return resp.text().then(function (t) { throw new Error('云端写入失败（' + resp.status + '）：' + t.slice(0, 160)); });
+        }
+        markCloud({ lastPushAt: Date.now(), lastAppliedAt: payload.updatedAt });
+        emit('tianyi:cloud-sync', { source: 'push', at: Date.now() });
+        return true;
+      }).catch(function (err) {
+        cloudBusy.push = false;
+        throw err;
+      });
+    },
+    pull: function () {
+      if (!cloudReady()) return Promise.reject(new Error('云端同步未启用或配置不完整'));
+      if (cloudBusy.pull) return Promise.resolve(false);
+      cloudBusy.pull = true;
+      var c = cloudConfig();
+      var url = cloudBase(c) + '/rest/v1/tianyi_state?id=eq.' + encodeURIComponent(cloudId(c)) + '&select=data,updated_at';
+      return fetch(url, { headers: cloudHeaders(c) }).then(function (resp) {
+        if (!resp.ok) {
+          return resp.text().then(function (t) { throw new Error('云端读取失败（' + resp.status + '）：' + t.slice(0, 160)); });
+        }
+        return resp.json();
+      }).then(function (rows) {
+        cloudBusy.pull = false;
+        markCloud({ lastPullAt: Date.now() });
+        if (!Array.isArray(rows) || !rows.length || !rows[0].data) return false;
+        var remote = rows[0].data;
+        if (!Array.isArray(remote.conversations) || !Array.isArray(remote.faqs)) return false;
+        var rt = Number(remote.updatedAt || 0);
+        var applied = Number(cloudConfig().lastAppliedAt || 0);
+        if (rt && rt <= applied) return false;
+        markCloud({ lastAppliedAt: rt });
+        applyRemote(remote);
+        return true;
+      }).catch(function (err) {
+        cloudBusy.pull = false;
+        throw err;
+      });
+    },
+    test: function () { return Cloud.push().then(function () { return Cloud.pull(); }); },
+    start: function () {
+      clearInterval(POLL_TIMER);
+      if (!cloudReady()) return;
+      var sec = Math.max(10, Number(cloudConfig().interval) || 20);
+      POLL_TIMER = setInterval(function () { Cloud.pull().catch(function () {}); }, sec * 1000);
+      Cloud.pull().catch(function () {});
+    },
+    stop: function () { clearInterval(POLL_TIMER); clearTimeout(PUSH_TIMER); POLL_TIMER = null; PUSH_TIMER = null; }
+  };
+
   global.TY = {
     STORAGE_KEY: STORAGE_KEY,
     INTENTS: INTENTS,
     FAQ_CATEGORIES: FAQ_CATEGORIES,
     LLM_PRESETS: LLM_PRESETS,
     Store: Store,
+    Cloud: Cloud,
     Engine: {
       detectIntent: detectIntent,
       retrieveFaq: retrieveFaq,
@@ -543,4 +724,6 @@
       toast: toast, downloadJson: downloadJson, clamp: clamp
     }
   };
+
+  Cloud.start();
 })(window);
