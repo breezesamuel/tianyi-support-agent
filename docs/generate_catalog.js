@@ -1,0 +1,251 @@
+/* 生成「500+ 功能模块清单 + 竞品差距矩阵」
+ * 数据来源：2026-11 对 Intercom/Fin、Zendesk、Ada、Decagon、Sierra、
+ * 网易七鱼、智齿、环信、Udesk、Gorgias、Freshdesk、Tidio、Cognigy 的公开资料调研。
+ */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const OUT_DIR = __dirname;
+
+const COMPETITORS = [
+  ['Intercom / Fin', 'AI 解决率 76%+，Knowledge Hub、Procedures、Copilot 2、350+ 集成、全渠道、AI Insights'],
+  ['Zendesk', 'AI Agents、Agent Builder、Admin/Knowledge/Analyst Copilot、QA Score、Action Flows、MCP、全渠道'],
+  ['Ada', '无代码构建器、50+ 语言、全渠道、helpdesk-independent、A/B 测试、主动消息、分析'],
+  ['Decagon', 'AOP 自然语言流程、Voice 3、Watchtower 实时质检、Proactive Agents、Duet 自改进、MCP Client'],
+  ['Sierra', 'Constellation 多模型架构、品牌语调、ADP 持久记忆、按结果付费、深度 CRM/计费/ERP 动作'],
+  ['网易七鱼', '全渠道、在线/呼入机器人、AI 外呼、工单、智能质检、数据大屏、Agent Studio、数字员工'],
+  ['智齿科技', '全渠道、智能分配、富媒体、工单+知识库+辅助、多维报表、70+ 语言、150+ 接口'],
+  ['环信客服云', '意图识别 95%、情绪 5 级、多实体跟踪、32K 上下文、话题切换、移动端'],
+  ['Udesk / 沃丰', '20+ 渠道、SLA 预警、自定义字段/触发器、全量质检、现场服务 ServiceGo、混合部署'],
+  ['Gorgias', 'Shopify 原生、订单/退款/折扣在会话内完成、AI 销售归因、300+ 集成、全渠道收件箱'],
+  ['Freshdesk / Freddy', 'Copilot 写作/摘要/建议回复/自动分类/情感/Live Translate、AI Agent Studio、AI Insights'],
+  ['Tidio / Lyro', '5 分钟从网站训练、12+ 语言、Flows 40+ 模板、统一收件箱、Lyro Connect'],
+  ['Cognigy / NiCE', '低代码 Studio、MCP/A2A、可复用技能、决策追踪、语音到语音、治理护栏、110+ 集成']
+];
+
+const ALL = 'Intercom,Zendesk,Ada,Decagon,Sierra,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio,Cognigy';
+const MOST = 'Intercom,Zendesk,Ada,Decagon,七鱼,智齿,环信,Udesk,Gorgias,Freshdesk,Tidio';
+const CORE = 'Intercom,Zendesk,Ada,Decagon,七鱼,智齿,Udesk,Freshdesk,Tidio';
+const ENT = 'Zendesk,Decagon,Sierra,Udesk,Cognigy';
+const CHINA = '七鱼,智齿,环信,Udesk';
+const ECOM = 'Gorgias,Intercom,Zendesk,Freshdesk,Tidio,七鱼';
+const VOICE = 'Zendesk,Decagon,Sierra,Cognigy,Udesk,七鱼,智齿';
+const SEC = 'Zendesk,Decagon,Sierra,Cognigy,Udesk,Freshdesk';
+
+const CATS = [
+  { name: '全渠道接入', cov: ALL, feasible: '部分', advice: '前端先做 Web/H5/微信入口与统一身份；原生 SDK/电话需后端', items: [
+    '网页聊天','H5 嵌入','移动 Web 适配','iOS SDK','Android SDK','微信公众号','微信小程序','企业微信','抖音客服','微博客服','邮件渠道','短信渠道','WhatsApp','Facebook Messenger','Instagram','Telegram','Slack','Microsoft Teams','电话渠道','视频客服','小程序插件','统一消息 API','Webhook 接入','第三方平台接入','多渠道统一身份','渠道优先级','渠道能力矩阵','离线消息','跨渠道上下文','渠道降级策略'
+  ]},
+  { name: '会话与收件箱', cov: MOST, feasible: '高', advice: '本地数据层扩展字段即可实现，优先做标签/搜索/分配/协作', items: [
+    '统一收件箱','会话列表','会话搜索','会话标签','会话分配','轮询分配','技能分配','VIP 优先','负载均衡','会话排队','排队位置提示','会话转接','会话合并','会话拆分','内部备注','@同事','碰撞检测','草稿同步','快捷回复','回复宏','回复模板','富文本消息','表情','图片消息','文件消息','语音消息','视频消息','链接预览','消息撤回','消息编辑','已读回执','输入指示器','离线自动回复','关键词自动回复','会话结束总结','满意度邀请','会话导出','批量会话操作'
+  ]},
+  { name: 'Bot / AI 核心', cov: ALL, feasible: '中', advice: '规则引擎已有；RAG、意图、置信度可复用现有 LLM 配置扩展', items: [
+    'FAQ 检索','关键词匹配','语义检索','向量检索','RAG 增强','意图识别','多意图识别','槽位填充','多轮对话','上下文保持','话题切换','实体跟踪','情感识别','情绪分级','品牌语调','个性化回复','生成式回答','规则引擎','决策树流程','可视化流程','无代码构建器','AOP 自然语言流程','动作执行','API 调用','工具调用','MCP 接入','函数调用','自动澄清提问','未知问题兜底','幻觉抑制','答案引用溯源','置信度阈值','答案人工审核','Supervisor 模型','模拟测试','A/B 测试','回放测试','持续学习','自我改进','知识缺口发现','训练数据导出','模型切换','多模型路由','提示词管理','提示词版本','沙箱环境'
+  ]},
+  { name: '知识库与内容', cov: MOST, feasible: '高', advice: '现有 FAQ 管理可直接扩展相似问/版本/审批/导入导出', items: [
+    'FAQ 管理','知识分类','知识标签','检索关键词','同义词','相似问法','标准答案','富文本答案','附件知识','PDF 知识','网页抓取','URL 导入','文档导入','表格知识图谱','多语言内容','内容版本','审批流','定时发布','失效提醒','命中统计','内容评分','内容缺口','AI 自动草稿','Confluence 同步','Notion 同步','SharePoint 同步','Google Drive 同步','知识权限','内部知识库','公共帮助中心','文章搜索','文章推荐','文章反馈','重复条目检测','冲突检测','批量导入导出','备份恢复','知识健康检查','知识贡献者','知识有效期','知识审计'
+  ]},
+  { name: '工单与流程', cov: MOST, feasible: '高', advice: '现有 handoff 工单可扩展字段、SLA、触发器和流转', items: [
+    '工单创建','自动建单','手动建单','工单字段自定义','表单模板','工单状态','优先级','工单分类','工单标签','工单指派','自动分配','工单组/队列','协同处理人','抄送人','子工单','父子工单','依赖工单','SLA 策略','首次响应 SLA','解决 SLA','超时预警','自动升级','触发器','定时器','可视化工作流','审批流','跨部门流转','工单评论','内部备注','工单附件','客户可见性','关闭原因','工单重开','工单合并','工单拆分','工单搜索','工单导出','移动处理','工单评价','工单转派','工单催办','工单快照'
+  ]},
+  { name: '转人工与协作', cov: MOST, feasible: '高', advice: '已有自动转人工；补充路由、工作时间与交接摘要', items: [
+    '自动转人工','用户主动转人工','意图触发转人工','情绪触发转人工','低置信度转人工','连续未解决转人工','敏感问题转人工','转接上下文','人工排队','技能路由','VIP 路由','服务时间','非工作时间留言','工单预填','人工接管','机器人辅助人工','坐席建议回复','实时翻译','会话摘要','交接备注','转接原因','转接记录','机器人退出','回访任务','转人工率统计'
+  ]},
+  { name: '客户画像与 CRM', cov: MOST, feasible: '中', advice: '本地可先做访客档案与标签；真实 CRM 同步需后端或用户配置', items: [
+    '客户档案','身份识别','手机号识别','邮箱识别','设备 ID','匿名访客','访客轨迹','页面行为','购物车信息','订单历史','生命周期价值','客户标签','客户分群','VIP 等级','客户偏好','历史会话','历史工单','通话记录','客户笔记','自定义字段','客户合并','去重','客户导入','客户导出','Salesforce 同步','HubSpot 同步','账户层级','联系人层级','客户时间线','满意度历史','隐私掩码','客户出海信息'
+  ]},
+  { name: '电商与交易', cov: ECOM, feasible: '中', advice: '可做演示级订单/退款表单；真实交易需接入商城 API', items: [
+    '订单查询','物流查询','退款申请','退款进度','退货','换货','取消订单','修改订单','创建订单','发票','优惠券','折扣码','价格保护','库存查询','商品推荐','加购','购物车恢复','弃单挽回','支付链接','支付失败处理','重复扣款','分期支付','会员权益','订阅管理','续费','试用','套餐升级','套餐降级','账户余额','积分','礼品卡','评价引导','复购提醒','大促预案','预售咨询','尺码助手','到店预约','门店查询'
+  ]},
+  { name: '分析与报表', cov: MOST, feasible: '高', advice: '现有概览已具备基础统计；扩展维度与导出即可覆盖多数', items: [
+    '会话量','消息量','首次响应时间','平均响应时间','解决时间','一次解决率','AI 解决率','Deflection 率','转人工率','CSAT','NPS','CES','满意度分布','意图分布','趋势分析','渠道分布','坐席绩效','团队绩效','SLA 达成率','知识库命中率','知识缺口','热门问题','情绪分布','质检得分','成本/解决','节省工时','ROI 分析','自定义报表','仪表盘','数据大屏','数据导出','定时报告','邮件报告','自然语言分析','预测分析','异常检测','根因分析','队列监控','实时监控','对话级分析','转化归因'
+  ]},
+  { name: '质检与合规', cov: SEC, feasible: '中', advice: '医疗红线与非诊疗声明已有；可扩展敏感词、审计日志与保留策略', items: [
+    '全量质检','抽样质检','关键词检测','敏感词过滤','违禁词过滤','医疗红线检测','疗效承诺检测','情绪检测','合规评分','质检规则','质检模板','人工复核','申诉流程','违规告警','审计日志','操作留痕','数据脱敏','PII 识别','数据保留策略','被遗忘权','数据导出权','同意管理','DPA','数据驻留','SOC 2','ISO 27001','HIPAA','GDPR','CCPA','等保三级','私有化部署','零留存模式','提示词注入防护','越狱防护','品牌安全','答案引用','模型训练退出','儿童隐私保护','中医合规术语表'
+  ]},
+  { name: '主动与营销', cov: MOST, feasible: '中', advice: '可在聊天页加入主动消息与调研组件，营销自动化需行为数据源', items: [
+    '主动消息','欢迎语','离席消息','访客触发','页面触发','时间触发','购物车触发','弃单触发','回访','满意度邀请','调研问卷','NPS 调研','产品公告','故障通知','活动推送','个性化推荐','交叉销售','升级销售','优惠券推送','流失召回','私域导流','企微添加','社群邀请','直播提醒','预约提醒','续费提醒','到期提醒','沉默唤醒','A/B 营销','营销归因','收入归因','客服转销售','会员日提醒'
+  ]},
+  { name: '多语言与本地化', cov: ALL, feasible: '中', advice: '先做界面/FAQ 双语与自动检测；实时翻译依赖 LLM 配置', items: [
+    '多语言界面','多语言知识库','语言自动检测','实时翻译','坐席翻译','机器人多语言','时区支持','本地化时间','本地化货币','本地化格式','区域政策','区域知识','多区域部署','语言路由','翻译记忆','术语表','语言质量评分','双语坐席','小语种支持','RTL 布局','本地合规','本地支付','本地渠道','本地时区工单','多语言报表','繁体中文','粤语支持','英文客服模板'
+  ]},
+  { name: '安全与权限', cov: SEC, feasible: '中', advice: '后台可先做角色与简单权限；SSO/加密/审计需服务端支撑', items: [
+    'RBAC','角色管理','权限组','字段权限','数据权限','租户隔离','SSO','SAML','OAuth','2FA','IP 白名单','设备信任','会话超时','密码策略','登录日志','操作日志','加密传输','静态加密','BYOK','密钥轮换','备份加密','灾备','故障转移','限流','防刷','水印','敏感操作确认','管理员审批','权限申请','数据访问审计','API 密钥管理','密钥泄露检测'
+  ]},
+  { name: '集成与开放', cov: ALL, feasible: '低', advice: '提供配置入口与 Webhook 框架；外部系统需账号与服务端', items: [
+    'REST API','Webhook','GraphQL','SDK','插件市场','Zapier','Salesforce','HubSpot','Zendesk','Freshdesk','Intercom','Shopify','WooCommerce','Stripe','PayPal','Slack','Teams','WhatsApp','Facebook','Instagram','Notion','Confluence','SharePoint','Google Drive','Jira','ServiceNow','SAP','Oracle','数据库连接','消息队列','CRM 同步','ERP 同步','支付网关','语音网关','身份提供商','MCP','A2A 协议','开放应用市场'
+  ]},
+  { name: '语音与视频', cov: VOICE, feasible: '低', advice: '需语音网关与媒体服务，建议列为合作集成而非本地实现', items: [
+    '呼入机器人','外呼机器人','语音识别','语音合成','声纹识别','打断处理','静音检测','通话转写','实时字幕','通话摘要','通话质检','通话录音','呼叫转移','三方通话','隐私号','外显号码','IVR','排队音乐','语音门户','语音导航','视频客服','屏幕共享','文件传输','视频质检','语音 A/B 测试','语音延迟监控','品牌音色','多语言语音','电话渠道分析','语音情绪检测','坐席耳语'
+  ]},
+  { name: '坐席辅助与效率', cov: MOST, feasible: '高', advice: '可在管理后台加入摘要、建议回复、相似问答与快捷操作', items: [
+    '回复建议','自动补全','写作助手','语气调整','实时翻译','会话摘要','相似工单','相似会话','知识推荐','下一步建议','自动填充字段','自动分类','自动打标签','自动总结','语音转文字','富文本编辑','回复宏','快捷键','批量操作','拖拽工作流','待办','提醒','排班','工作量','忙碌状态','技能组','绩效看板','培训模式','新手指引','智能质检提示','坐席情绪提醒'
+  ]},
+  { name: '客户自助服务', cov: MOST, feasible: '高', advice: '可新增独立帮助中心页与自助表单，复用现有 FAQ 数据', items: [
+    '帮助中心','FAQ 页面','站内搜索','分类浏览','热门文章','相关文章','自助表单','自助订单查询','自助退款','自助改期','自助账户设置','自助找回密码','自助下载','自助进度查询','社区论坛','意见反馈','机器人入口','服务目录','在线预约','工单提交','工单进度查询','服务状态页','公告','知识订阅','移动端自助','服务评价','常见问题地图'
+  ]},
+  { name: '机器人构建与测试', cov: CORE, feasible: '中', advice: '可视化流程工作量大；先做测试用例、模拟对话与版本管理', items: [
+    '可视化流程','条件分支','循环','变量','槽位','API 节点','代码节点','子流程','意图训练','语料标注','测试集','单元测试','对话模拟','多轮测试','回归测试','冒烟测试','A/B 实验','灰度发布','版本管理','回滚','发布审批','沙箱','生产监控','漂移检测','性能监控','成本监控','文档生成','配置导入导出','模板市场','机器人 Copilot','流程校验'
+  ]},
+  { name: '行业场景模板', cov: ALL, feasible: '中', advice: '以 FAQ 种子包 + 欢迎语 + 意图词表形式快速交付', items: [
+    '电商','教育','医疗健康','金融','保险','政务','游戏','SaaS','旅游','物流','零售','餐饮','酒店','汽车','房地产','制造','3C 数码','美妆','时尚鞋服','生鲜','商超','能源','电信','媒体','招聘 HR','法务','知识产权','跨境电商','出海企业','现场服务','中医馆/健康科普','课程培训','知识付费','本地生活'
+  ]},
+  { name: '运营与治理', cov: MOST, feasible: '中', advice: '服务时间与值班可先做配置；计费/合同需业务系统', items: [
+    '服务时间','节假日','排队策略','路由规则','升级策略','通知模板','告警','值班表','服务目录','成本中心','预算','用量监控','配额','计费','账单','合同','SLA 报告','合规报告','变更管理','发布日历','值班交接','事故管理','复盘','知识运营','持续优化闭环','服务水平协议','运营看板','客服排班','服务质量目标'
+  ]}
+];
+
+const EXISTS = new Set([
+  '网页聊天','H5 嵌入','移动 Web 适配','邮件渠道','统一消息 API','Webhook 接入','会话列表','会话搜索','FAQ 检索','关键词匹配','意图识别','多轮对话','上下文保持','规则引擎','FAQ 管理','知识分类','检索关键词','命中统计','批量导入导出','备份恢复','工单创建','自动建单','工单状态','优先级','工单分类','工单标签','工单评论','关闭原因','自动转人工','用户主动转人工','连续未解决转人工','转接上下文','会话量','消息量','转人工率','CSAT','满意度分布','意图分布','趋势分析','热门问题','欢迎语','满意度邀请','非诊疗声明','医疗红线检测','数据脱敏','中文客服模板','客服策略','知识库命中率','工单评价','会话导出','FAQ 页面','意见反馈','机器人入口','服务评价'
+]);
+
+const PARTIAL = new Set([
+  '智能分配','负载均衡','富文本消息','表情','图片消息','文件消息','满意度邀请','质检得分','数据大屏','数据导出','实时监控','情绪分布','模型切换','提示词管理','答案引用','API 调用','工具调用','工单评价','客户标签','客户分群','客户时间线','订单查询','退款申请','退款进度','自助表单','工单提交','工单进度查询','多轮测试','回归测试','中文客服模板','中医合规术语表','服务时间','通知模板','用量监控'
+]);
+
+const CORE_CATS = new Set(['会话与收件箱','Bot / AI 核心','知识库与内容','工单与流程','转人工与协作','分析与报表','质检与合规','客户自助服务','坐席辅助与效率']);
+const ADV_CATS = new Set(['客户画像与 CRM','电商与交易','主动与营销','多语言与本地化','安全与权限','机器人构建与测试','行业场景模板','运营与治理']);
+
+function statusOf(name) {
+  if (EXISTS.has(name)) return '已有';
+  if (PARTIAL.has(name)) return '部分';
+  return '缺失';
+}
+function priorityOf(status, catName) {
+  if (status === '已有') return 'P0 保持';
+  if (status === '部分') return 'P1 补齐';
+  if (CORE_CATS.has(catName)) return 'P1 优先';
+  if (ADV_CATS.has(catName)) return 'P2 规划';
+  return 'P3 观察';
+}
+function adviceOf(status, cat) {
+  if (status === '已有') return '已具备基础能力：补自动化测试、边界场景与使用文档';
+  if (status === '部分') return cat.advice + '；先补字段与交互，再接后端';
+  return cat.advice;
+}
+
+const rows = [];
+CATS.forEach((cat, ci) => {
+  cat.items.forEach((name, ii) => {
+    const status = statusOf(name);
+    rows.push({
+      id: 'F' + String(ci + 1).padStart(2, '0') + '-' + String(ii + 1).padStart(3, '0'),
+      category: cat.name,
+      name,
+      status,
+      competitors: cat.cov,
+      priority: priorityOf(status, cat.name),
+      feasible: cat.feasible,
+      advice: adviceOf(status, cat)
+    });
+  });
+});
+
+if (rows.length < 500) throw new Error('功能数量不足 500：' + rows.length);
+
+const counts = rows.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, {});
+const prio = rows.reduce((a, r) => { a[r.priority] = (a[r.priority] || 0) + 1; return a; }, {});
+
+function csvCell(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }
+const csv = [
+  ['ID','大类','功能模块','天医状态','竞品覆盖','优先级','前端可行性','差距与实现建议'].join(','),
+  ...rows.map(r => [r.id,r.category,r.name,r.status,r.competitors,r.priority,r.feasible,r.advice].map(csvCell).join(','))
+].join('\n');
+fs.writeFileSync(path.join(OUT_DIR, 'feature-catalog.csv'), '\ufeff' + csv, 'utf8');
+
+const md = [];
+md.push('# 数理天医智能客服 · 500+ 功能模块全景与竞品差距矩阵');
+md.push('');
+md.push('> 生成时间：2026-11-17　|　候选模块：**' + rows.length + ' 项**　|　调研竞品：13 家');
+md.push('');
+md.push('## 一、结论摘要');
+md.push('');
+md.push('- 当前应用已覆盖 **' + (counts['已有'] || 0) + ' 项**，部分覆盖 **' + (counts['部分'] || 0) + ' 项**，完全缺失 **' + (counts['缺失'] || 0) + ' 项**。');
+md.push('- 竞品普遍已具备而我们缺失的 P1 模块集中在：**会话协作、坐席辅助、质检合规、客户画像、自助服务、主动消息**。');
+md.push('- 企业级竞品（Decagon/Sierra/Cognigy/Zendesk）领先在：AOP 自然语言流程、实时质检、跨渠道记忆、深度业务动作、治理与追踪。');
+md.push('- 国内竞品（七鱼/智齿/环信/Udesk）领先在：全渠道、呼叫中心、工单流转、智能质检、数据大屏、行业模板。');
+md.push('- 电商竞品（Gorgias/Tidio）领先在：Shopify 原生订单动作、收入归因、弃单挽回、商品推荐。');
+md.push('');
+md.push('## 二、竞品能力对照');
+md.push('');
+md.push('| 竞品 | 关键能力 |');
+md.push('|---|---|');
+COMPETITORS.forEach(c => md.push('| ' + c[0] + ' | ' + c[1] + ' |'));
+md.push('');
+md.push('## 三、状态与优先级统计');
+md.push('');
+md.push('| 状态 | 数量 | 说明 |');
+md.push('|---|---:|---|');
+md.push('| 已有 | ' + (counts['已有'] || 0) + ' | 当前版本已具备，进入保持与测试 |');
+md.push('| 部分 | ' + (counts['部分'] || 0) + ' | 有雏形但深度不足，优先补齐 |');
+md.push('| 缺失 | ' + (counts['缺失'] || 0) + ' | 需新增，按优先级分批 |');
+md.push('');
+md.push('| 优先级 | 数量 |');
+md.push('|---|---:|');
+Object.keys(prio).sort().forEach(k => md.push('| ' + k + ' | ' + prio[k] + ' |'));
+md.push('');
+md.push('## 四、完整功能清单（按大类）');
+md.push('');
+CATS.forEach((cat, ci) => {
+  const catRows = rows.filter(r => r.category === cat.name);
+  md.push('### ' + (ci + 1) + '. ' + cat.name + '（' + catRows.length + ' 项）');
+  md.push('');
+  md.push('| ID | 功能模块 | 天医状态 | 优先级 | 竞品覆盖 | 前端可行性 |');
+  md.push('|---|---|---|---|---|---|');
+  catRows.forEach(r => md.push('| ' + r.id + ' | ' + r.name + ' | ' + r.status + ' | ' + r.priority + ' | ' + r.competitors + ' | ' + r.feasible + ' |'));
+  md.push('');
+});
+md.push('> 详细的「差距与实现建议」列见同目录 `feature-catalog.csv`。');
+fs.writeFileSync(path.join(OUT_DIR, 'feature-catalog.md'), md.join('\n'), 'utf8');
+
+const topGaps = rows.filter(r => r.priority === 'P1 补齐' || r.priority === 'P1 优先').slice(0, 40);
+const gapMd = [];
+gapMd.push('# 竞品差距分析与补缺路线图');
+gapMd.push('');
+gapMd.push('## 1. 调研范围');
+gapMd.push('');
+gapMd.push('国际：Intercom/Fin、Zendesk、Ada、Decagon、Sierra、Gorgias、Freshdesk、Tidio、Cognigy；国内：网易七鱼、智齿、环信、Udesk。资料来自各厂商官网、帮助中心与 2026 年公开评测，检索日期 2026-11-17。');
+gapMd.push('');
+gapMd.push('## 2. 我们已领先 / 已对齐的点');
+gapMd.push('');
+gapMd.push('- 多轮对话 + FAQ 检索增强 + 意图识别 + 自动转人工：与中小客服机器人对齐。');
+gapMd.push('- 满意度评分与统计、对话历史、知识库后台、转人工工单：覆盖基础闭环。');
+gapMd.push('- 中医健康场景非诊疗声明与医疗红线提示：比通用竞品更贴合本项目合规要求。');
+gapMd.push('- 已支持可选大模型与 Supabase 云端同步：具备继续演进底座。');
+gapMd.push('');
+gapMd.push('## 3. 主要差距（按业务价值排序）');
+gapMd.push('');
+gapMd.push('| # | 差距 | 竞品代表 | 影响 | 建议 |');
+gapMd.push('|---:|---|---|---|---|');
+[
+  ['会话标签/分配/协作','Intercom、Zendesk、七鱼','后台只能看不能运营','增加标签、指派、内部备注、快捷回复'],
+  ['坐席辅助 Copilot','Zendesk、Freshdesk、Decagon','人工接管后无辅助','会话摘要、建议回复、知识推荐'],
+  ['质检与敏感词','七鱼、Udesk、Decagon','健康类高风险回答缺少自动质检','敏感词、疗效承诺检测、合规评分'],
+  ['客户画像与访客轨迹','七鱼、智齿、Gorgias','无法识别回头客','本地画像 + 访客轨迹 + 标签'],
+  ['自助服务门户','Freshdesk、Zendesk、七鱼','用户只能对话不能自助','独立帮助中心与自助表单'],
+  ['主动消息与调研','Intercom、Tidio、Ada','只能被动应答','欢迎语、离席消息、NPS 调研'],
+  ['多语言','Ada、Tidio、智齿','仅中文','界面与 FAQ 双语 + 语言自动检测'],
+  ['报表深度','Zendesk、七鱼、Freshdesk','只有基础统计','首次响应、解决时长、趋势、导出'],
+  ['SLA 与升级','Udesk、Freshdesk、Zendesk','工单无时限','SLA 配置、超时预警与升级'],
+  ['机器人测试与版本','Decagon、Cognigy、Intercom','改配置无法回归','测试用例、模拟对话、版本回滚']
+].forEach((g, i) => gapMd.push('| ' + (i + 1) + ' | ' + g[0] + ' | ' + g[1] + ' | ' + g[2] + ' | ' + g[3] + ' |'));
+gapMd.push('');
+gapMd.push('## 4. 本轮优先落地的 P1 模块');
+gapMd.push('');
+gapMd.push('从上方差距中选取纯前端可实现、价值密度最高的 12 项：');
+gapMd.push('');
+topGaps.slice(0, 12).forEach((r, i) => gapMd.push((i + 1) + '. **' + r.name + '**（' + r.id + '，' + r.category + '）'));
+gapMd.push('');
+gapMd.push('## 5. 路线图建议');
+gapMd.push('');
+gapMd.push('- **第一批（已完成设计，本轮落地）**：会话标签、内部备注/快捷回复、会话摘要、敏感词质检、访客画像、帮助中心入口、NPS/反馈、SLA 预警、会话导出、数据看板增强。');
+gapMd.push('- **第二批**：多语言、机器人测试与版本、主动消息、工单字段与触发器。');
+gapMd.push('- **第三批**：服务端能力（语音、CRM、支付、CRM 同步、SSO、审计日志）。');
+gapMd.push('');
+gapMd.push('## 6. 关键来源');
+gapMd.push('');
+COMPETITORS.forEach(c => gapMd.push('- ' + c[0] + '：' + c[1]));
+fs.writeFileSync(path.join(OUT_DIR, 'gap-analysis.md'), gapMd.join('\n'), 'utf8');
+
+console.log(JSON.stringify({ total: rows.length, counts, priorities: prio, files: ['feature-catalog.md','feature-catalog.csv','gap-analysis.md'] }, null, 2));
