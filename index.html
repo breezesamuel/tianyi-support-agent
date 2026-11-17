@@ -7,7 +7,8 @@
 <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-<div class="app">
+<a class="skip-link" href="#msgInput" id="skipLink">跳转到对话区</a>
+<div class="app" id="appRoot">
   <header class="topbar">
     <button class="btn btn-icon btn-ghost" id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
     <div class="brand">
@@ -19,6 +20,8 @@
     </div>
     <div class="topbar-spacer"></div>
     <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">知识库已就绪</span></div>
+    <button class="btn btn-icon btn-ghost" id="a11yTextBtn" title="放大/恢复字号" aria-label="切换大字号">Aa</button>
+    <button class="btn btn-icon btn-ghost" id="a11yContrastBtn" title="高对比度" aria-label="切换高对比度" aria-pressed="false">◐</button>
     <button class="btn btn-icon btn-ghost" id="langBtn" title="Switch language / 切换语言" aria-label="切换语言">🌐 <span id="langLabel">EN</span></button>
     <a class="btn" href="admin.html" title="进入管理后台" id="adminLink">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
@@ -57,15 +60,22 @@
       <button class="btn btn-sm" id="handoffBtn" title="转接人工客服">🙋 转人工</button>
     </div>
 
-    <div class="msg-list" id="msgList">
+    <div class="ai-disclosure" id="aiDisclosure" role="note">
+      <span class="ai-badge">AI</span>
+      <span id="aiDisclosureText">您正在与 AI 智能助手对话。回答由知识库与大模型辅助生成，请以平台实际规则为准。</span>
+    </div>
+
+    <div class="msg-list" id="msgList" role="log" aria-live="polite" aria-relevant="additions" aria-label="对话消息">
       <div class="msg-list-inner" id="msgListInner"></div>
     </div>
+    <div class="sr-only" id="liveAnnouncer" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <div class="composer-wrap">
       <div class="composer-inner">
         <div class="composer">
           <button class="btn btn-ghost btn-icon" id="humanBtn" title="转人工">🙋</button>
-          <textarea id="msgInput" rows="1" placeholder="请描述您的问题，例如：我的订单还没开通 / 如何申请退款…" autocomplete="off"></textarea>
+          <textarea id="msgInput" rows="1" placeholder="请描述您的问题，例如：我的订单还没开通 / 如何申请退款…" autocomplete="off" aria-label="输入您的问题"></textarea>
+          <button class="btn btn-ghost btn-icon voice-btn" id="voiceBtn" title="语音输入" aria-label="语音输入" aria-pressed="false">🎙</button>
           <div class="composer-actions">
             <button class="btn btn-ghost btn-icon hidden" id="stopBtn" title="停止生成">■</button>
             <button class="send-btn" id="sendBtn" title="发送">
