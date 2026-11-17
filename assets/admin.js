@@ -19,11 +19,24 @@
   function fmtStatus(s) {
     return { active: '<span class="badge green">进行中</span>', waiting_human: '<span class="badge red">等待人工</span>', resolved: '<span class="badge gray">已解决</span>' }[s] || '<span class="badge gray">—</span>';
   }
+  function slaBadge(c) {
+    var s = Store.slaStatus(c);
+    if (s.level === 'danger') return '<span class="badge red">' + s.label + '</span>';
+    if (s.level === 'warn') return '<span class="badge" style="background:#f5e6c8;color:#8a6a2f">' + s.label + '</span>';
+    return '<span class="badge green">' + s.label + '</span>';
+  }
   function intentBadge(key) {
     var i = TY.INTENTS[key] || TY.INTENTS.other;
     return '<span class="badge" style="background:' + i.color + '1a;color:' + i.color + '">' + i.label + '</span>';
   }
   function stars(n) { return '<span class="stars-small">' + '★'.repeat(n) + '☆'.repeat(5 - n) + '</span>'; }
+  function fmtDuration(ms) {
+    if (!ms) return '—';
+    var min = Math.round(ms / 60000);
+    if (min < 60) return min + ' 分钟';
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + ' 小时' + (m ? ' ' + m + ' 分' : '');
+  }
   function convTitle(id) {
     var c = Store.getConversation(id);
     return c ? c.title : '（会话已删除）';
@@ -54,7 +67,11 @@
       ['满意率', s.ratingCount ? Math.round(s.satisfactionRate * 100) + '%' : '—', '4 星及以上占比', 'accent'],
       ['转人工率', s.totalConversations ? Math.round(s.handoffRate * 100) + '%' : '—', s.totalHandoffs + ' 个工单', 'warn'],
       ['待处理工单', s.pendingHandoffs, '需人工跟进', s.pendingHandoffs ? 'warn' : ''],
-      ['知识库条目', s.totalFaqs, '共 ' + st.faqs.length + ' 条（含停用）', '']
+      ['知识库条目', s.totalFaqs, '共 ' + st.faqs.length + ' 条（含停用）', ''],
+      ['平均首响', fmtDuration(s.avgFirstResponseMs), '用户→机器人首次回复', 'accent'],
+      ['平均解决时长', fmtDuration(s.avgResolutionMs), '仅统计已解决会话', ''],
+      ['NPS', s.avgNps == null ? '—' : s.avgNps.toFixed(1), s.npsCount + ' 条推荐意愿', 'gold'],
+      ['合规预警', s.complianceFlags, '命中敏感表述的会话', s.complianceFlags ? 'warn' : '']
     ];
     el('statGrid').innerHTML = cards.map(function (c) {
       return '<div class="stat-card ' + c[3] + '"><div class="sc-label">' + c[0] + '</div><div class="sc-value">' + c[1] + '</div><div class="sc-foot">' + c[2] + '</div></div>';
@@ -122,6 +139,17 @@
     }).join('') : '<tr><td colspan="5"><div class="empty" style="padding:22px"><span class="empty-icon">✓</span>暂无人工工单</div></td></tr>';
     el('navHandoffCount').textContent = s.pendingHandoffs;
     el('navHandoffCount').classList.toggle('hidden', !s.pendingHandoffs);
+
+    var flagged = st.conversations.filter(function (c) {
+      return (c.messages || []).some(function (m) { return m.complianceFlags && m.complianceFlags.length; });
+    }).slice(0, 6);
+    el('complianceTag').textContent = s.complianceFlags + ' 条';
+    el('complianceAlerts').innerHTML = flagged.length ? flagged.map(function (c) {
+      var words = [];
+      c.messages.forEach(function (m) { if (m.complianceFlags) words = words.concat(m.complianceFlags); });
+      return '<div class="alert-row" data-goto-conv="' + c.id + '"><b>' + esc(c.title) + '</b>' +
+        '<span>' + esc(words.slice(0, 3).join(' / ')) + '</span></div>';
+    }).join('') : '<div class="empty" style="padding:18px"><span class="empty-icon">✓</span>未发现敏感表述</div>';
   }
 
   /* ---------- conversations ---------- */
@@ -140,34 +168,61 @@
       return '<tr data-id="' + c.id + '">' +
         '<td class="td-strong td-clip" title="' + esc(c.title) + '">' + esc(c.title) + '</td>' +
         '<td>' + intentBadge(c.intent) + '</td><td>' + fmtStatus(c.status) + '</td>' +
+        '<td>' + slaBadge(c) + '</td>' +
         '<td>' + (c.messages || []).length + '</td>' +
         '<td>' + (c.rating ? stars(c.rating.score) : '<span class="muted">未评价</span>') + '</td>' +
         '<td>' + U.formatDateTime(c.updatedAt) + '</td>' +
         '<td><button class="btn btn-sm" data-act="view" data-id="' + c.id + '">查看</button> ' +
           '<button class="btn btn-sm btn-danger" data-act="del" data-id="' + c.id + '">删除</button></td></tr>';
-    }).join('') : '<tr><td colspan="7"><div class="empty"><span class="empty-icon">▤</span>没有符合条件的会话</div></td></tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty"><span class="empty-icon">▤</span>没有符合条件的会话</div></td></tr>';
   }
 
   function openConvDrawer(id) {
     var c = Store.getConversation(id);
     if (!c) return;
     el('drawerTitle').textContent = '会话详情 · ' + c.title;
+    var v = c.visitor || {};
+    var tags = (c.tags || []).map(function (t) {
+      return '<span class="tag" style="margin-right:5px">' + esc(t) +
+        ' <b data-drawer-act="deltag" data-tag="' + esc(t) + '" style="cursor:pointer">×</b></span>';
+    }).join('') || '<span class="muted">暂无标签</span>';
+    var notes = (c.internalNotes || []).map(function (n) {
+      return '<div class="drawer-msg"><div class="dm-role"><b>内部备注</b><span>' + U.formatDateTime(n.ts) + '</span></div>' +
+        '<div class="dm-body">' + esc(n.text) + '</div></div>';
+    }).join('') || '<div class="muted" style="font-size:12px;padding:8px 0">暂无内部备注</div>';
+    var firstUser = (c.messages || []).filter(function (m) { return m.role === 'user'; })[0];
+    var firstBot = (c.messages || []).filter(function (m) { return m.role === 'assistant'; })[0];
+    var frText = firstUser && firstBot ? fmtDuration(Math.max(0, firstBot.ts - firstUser.ts)) : '—';
+    var resolveText = c.resolvedAt ? fmtDuration(Math.max(0, c.resolvedAt - c.createdAt)) : '—';
     var html = '<div class="panel" style="margin-bottom:14px"><div class="kv">' +
       '<span>会话 ID</span><span>' + esc(c.id) + '</span>' +
       '<span>识别意图</span><span>' + intentBadge(c.intent) + '</span>' +
-      '<span>状态</span><span>' + fmtStatus(c.status) + '</span>' +
+      '<span>状态 / SLA</span><span>' + fmtStatus(c.status) + ' ' + slaBadge(c) + '</span>' +
       '<span>创建时间</span><span>' + U.formatDateTime(c.createdAt) + '</span>' +
+      '<span>首响 / 解决</span><span>' + frText + ' / ' + resolveText + '</span>' +
       '<span>消息数</span><span>' + (c.messages || []).length + '</span>' +
-      '<span>满意度</span><span>' + (c.rating ? stars(c.rating.score) + ' ' + (c.rating.comment ? '「' + esc(c.rating.comment) + '」' : '') : '未评价') + '</span>' +
-      '</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<span>满意度 / NPS</span><span>' + (c.rating ? stars(c.rating.score) : '未评价') + ' · ' + (c.nps == null ? '—' : c.nps) + '</span>' +
+      '</div>' +
+      '<div style="font-size:12px;margin:12px 0 6px"><b>会话摘要</b> <button class="btn btn-sm" data-drawer-act="resummarize" data-id="' + c.id + '">重新生成</button>' +
+      '<div class="notice-card" style="margin-top:6px">' + esc(c.summary || '尚无摘要') + '</div></div>' +
+      '<div style="font-size:12px;margin:12px 0 6px"><b>访客画像</b><div class="muted">ID ' + esc(v.id || 'anon') + ' · 语言 ' + esc(v.lang || '—') + ' · 来源 ' + esc(v.ref || '直接访问') + '</div>' +
+      '<div class="muted" style="word-break:break-all">UA ' + esc((v.ua || '—').slice(0, 120)) + '</div></div>' +
+      '<div style="font-size:12px;margin:12px 0 6px"><b>会话标签</b><div style="margin-top:6px">' + tags + '</div>' +
+      '<div style="display:flex;gap:6px;margin-top:6px"><input class="input" id="tagInput" placeholder="新增标签（最多12字）"><button class="btn btn-sm" data-drawer-act="addtag" data-id="' + c.id + '">添加</button></div></div>' +
+      '<div style="font-size:12px;margin:12px 0 6px"><b>内部备注（客户不可见）</b>' + notes +
+      '<textarea class="textarea" id="noteInput" placeholder="写下处理进展…"></textarea>' +
+      '<button class="btn btn-sm" data-drawer-act="addnote" data-id="' + c.id + '" style="margin-top:6px">添加备注</button></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
       '<button class="btn btn-sm" data-drawer-act="resolve" data-id="' + c.id + '">标记已解决</button>' +
+      '<button class="btn btn-sm" data-drawer-act="export" data-id="' + c.id + '">导出本会话</button>' +
       '<button class="btn btn-sm btn-danger" data-drawer-act="delete" data-id="' + c.id + '">删除会话</button></div></div>';
     html += '<h4 style="font-size:12px;color:var(--ink-3);letter-spacing:1px;margin:0 0 10px">完整对话</h4>';
     html += (c.messages || []).map(function (m) {
       return '<div class="drawer-msg ' + (m.role === 'user' ? 'user' : '') + '">' +
         '<div class="dm-role"><b>' + (m.role === 'user' ? '用户' : '天医小助手') + '</b><span>' + U.formatDateTime(m.ts) + '</span>' +
         (m.intent ? '<span>' + (TY.INTENTS[m.intent] || TY.INTENTS.other).label + '</span>' : '') +
-        (m.engine ? '<span>' + esc(m.engine) + '</span>' : '') + '</div>' +
+        (m.engine ? '<span>' + esc(m.engine) + '</span>' : '') +
+        (m.complianceFlags && m.complianceFlags.length ? '<span class="badge red">合规：' + esc(m.complianceFlags.join('/')) + '</span>' : '') + '</div>' +
         '<div class="dm-body">' + esc(String(m.content || '').replace(/\[\[HANDOFF\]\]/g, '')) + '</div>' +
         (m.handoff ? '<div class="handoff-card" style="margin-top:8px"><strong>已转人工</strong>' + esc(m.handoff) + '</div>' : '') +
         (m.sources && m.sources.length ? '<div class="muted" style="font-size:11px;margin-top:5px">引用：' + m.sources.map(function (x) { return esc(x.question); }).join('；') + '</div>' : '') +
@@ -318,6 +373,13 @@
     el('setFaqThreshold').value = s.faqThreshold;
     el('setHandoffThreshold').value = s.handoffThreshold;
     el('setAutoHandoff').checked = !!s.autoHandoff;
+    var sla = s.sla || {};
+    el('setSlaEnabled').checked = sla.enabled !== false;
+    el('setSlaFirst').value = sla.firstResponseMinutes || 5;
+    el('setSlaHours').value = sla.resolutionHours || 24;
+    var notice = s.notice || {};
+    el('setNoticeEnabled').checked = !!notice.enabled;
+    el('setNoticeText').value = notice.text || '';
     var st = Store.state();
     el('dataConvCount').textContent = st.conversations.length;
     el('dataFaqCount').textContent = st.faqs.length;
@@ -397,7 +459,9 @@
       var b = e.target.closest('[data-page]'); if (b) go(b.getAttribute('data-page'));
     });
     document.addEventListener('click', function (e) {
-      var g = e.target.closest('[data-goto]'); if (g) go(g.getAttribute('data-goto'));
+      var g = e.target.closest('[data-goto]'); if (g) { go(g.getAttribute('data-goto')); return; }
+      var ca = e.target.closest('[data-goto-conv]');
+      if (ca) { go('conversations'); openConvDrawer(ca.getAttribute('data-goto-conv')); }
     });
     el('refreshBtn').addEventListener('click', function () { render(); U.toast('数据已刷新', 'success'); });
     el('exportBtn').addEventListener('click', function () {
@@ -424,8 +488,32 @@
     el('drawerBody').addEventListener('click', function (e) {
       var b = e.target.closest('[data-drawer-act]'); if (!b) return;
       var id = b.getAttribute('data-id'), act = b.getAttribute('data-drawer-act');
-      if (act === 'resolve') { Store.updateConversation(id, { status: 'resolved' }); closeDrawer(); render(); U.toast('已标记为已解决', 'success'); }
-      if (act === 'delete' && confirm('确定删除这条会话记录吗？')) { Store.deleteConversation(id); closeDrawer(); render(); U.toast('会话已删除'); }
+      if (act === 'resolve') {
+        Store.updateConversation(id, { status: 'resolved', resolvedAt: Date.now() });
+        closeDrawer(); render(); U.toast('已标记为已解决', 'success');
+      } else if (act === 'delete' && confirm('确定删除这条会话记录吗？')) {
+        Store.deleteConversation(id); closeDrawer(); render(); U.toast('会话已删除');
+      } else if (act === 'addtag') {
+        var input = el('tagInput');
+        if (!input || !input.value.trim()) { U.toast('请输入标签', 'warn'); return; }
+        Store.addTag(id, input.value);
+        var conv = Store.getConversation(id); conv.summary = conv.summary; // keep reference
+        openConvDrawer(id); render(); U.toast('标签已添加', 'success');
+      } else if (act === 'deltag') {
+        Store.removeTag(id, b.getAttribute('data-tag'));
+        openConvDrawer(id); render();
+      } else if (act === 'addnote') {
+        var note = el('noteInput');
+        if (!note || !note.value.trim()) { U.toast('请输入备注内容', 'warn'); return; }
+        Store.addInternalNote(id, note.value);
+        openConvDrawer(id); U.toast('内部备注已保存', 'success');
+      } else if (act === 'resummarize') {
+        Store.summarize(id);
+        openConvDrawer(id); U.toast('会话摘要已更新', 'success');
+      } else if (act === 'export') {
+        var c = Store.getConversation(id);
+        if (c) { U.downloadJson('tianyi-conversation-' + id + '.json', c); U.toast('本会话已导出', 'success'); }
+      }
     });
 
     // handoffs
@@ -550,7 +638,16 @@
         welcome: el('setWelcome').value.trim(),
         faqThreshold: U.clamp(Number(el('setFaqThreshold').value) || 2.2, 0.5, 8),
         handoffThreshold: U.clamp(Number(el('setHandoffThreshold').value) || 2, 1, 10),
-        autoHandoff: el('setAutoHandoff').checked
+        autoHandoff: el('setAutoHandoff').checked,
+        sla: {
+          enabled: el('setSlaEnabled').checked,
+          firstResponseMinutes: U.clamp(Number(el('setSlaFirst').value) || 5, 1, 120),
+          resolutionHours: U.clamp(Number(el('setSlaHours').value) || 24, 1, 720)
+        },
+        notice: {
+          enabled: el('setNoticeEnabled').checked,
+          text: el('setNoticeText').value.trim().slice(0, 200)
+        }
       });
       U.toast('客服策略已保存', 'success'); loadSettings();
     });
